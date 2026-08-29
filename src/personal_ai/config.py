@@ -36,6 +36,10 @@ def _parse_positive_float(value: str, *, name: str) -> float:
     return parsed
 
 
+def _parse_csv(value: str) -> tuple[str, ...]:
+    return tuple(item.strip() for item in value.split(",") if item.strip())
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
     """Runtime settings for the local gateway and bounded integration services."""
@@ -46,6 +50,8 @@ class Settings:
     environment: str = "development"
     log_level: str = "INFO"
     allow_remote: bool = False
+    api_token: str | None = None
+    allowed_origins: tuple[str, ...] = ()
     qwen_base_url: str = "http://127.0.0.1:11434/v1"
     qwen_model: str = "qwen3.8:27b"
     qwen_timeout_seconds: float = 60.0
@@ -75,6 +81,8 @@ class Settings:
                 values.get("PERSONAL_AI_ALLOW_REMOTE", "false"),
                 name="PERSONAL_AI_ALLOW_REMOTE",
             ),
+            api_token=values.get("PERSONAL_AI_API_TOKEN") or None,
+            allowed_origins=_parse_csv(values.get("PERSONAL_AI_ALLOWED_ORIGINS", "")),
             qwen_base_url=values.get("PERSONAL_AI_QWEN_BASE_URL", "http://127.0.0.1:11434/v1"),
             qwen_model=values.get("PERSONAL_AI_QWEN_MODEL", "qwen3.8:27b"),
             qwen_timeout_seconds=_parse_positive_float(

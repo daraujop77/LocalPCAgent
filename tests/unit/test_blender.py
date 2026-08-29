@@ -69,7 +69,11 @@ def test_blender_fixture_workflow_completes_without_gui_or_blender(tmp_path) -> 
 
     run = service.start(
         blender_workflow(provider, memory),
-        state={"source": "scene.json", "task": "fixture workflow"},
+        state={
+            "source": "scene.json",
+            "task": "fixture workflow",
+            "allow_inspection_only": True,
+        },
         background=False,
     )
 
@@ -77,3 +81,46 @@ def test_blender_fixture_workflow_completes_without_gui_or_blender(tmp_path) -> 
     assert run.state["validated"] is True
     assert any(path.endswith("-preview.png") for path in run.artifacts)
     assert memory.episodes.list()[0].success is True
+
+
+def test_blender_workflow_rejects_unplanned_empty_mutation(tmp_path) -> None:
+    source = tmp_path / "scene.json"
+    source.write_text(json.dumps({"objects": []}), encoding="utf-8")
+    permissions = make_permission_service()
+    provider = BlenderIntegration(
+        permissions,
+        backend=LocalBlenderBackend(
+            workspace_root=tmp_path,
+            artifact_root="artifacts",
+            executable="missing",
+        ),
+    )
+    memory = MemoryService(tmp_path / "memory")
+    run = WorkflowService(tmp_path / "runs", memory=memory).start(
+        blender_workflow(provider, memory),
+        state={"source": "scene.json", "task": "must modify"},
+        background=False,
+    )
+
+    assert run.status == "failed"
+    assert "requires explicit operations" in run.errors[0]
+
+
+def test_blender_bpy_rejects_original_blend_target(tmp_path) -> None:
+    source = tmp_path / "scene.blend"
+    source.write_bytes(b"fixture")
+    backend = LocalBlenderBackend(
+        workspace_root=tmp_path,
+        artifact_root="artifacts",
+        executable="missing-blender",
+    )
+
+    result = backend.execute(
+        "blender.execute_bpy",
+        target="scene.blend",
+        parameters={"operations": [{"op": "set_render_engine", "value": "BLENDER_WORKBENCH"}]},
+    )
+
+    assert result.success is False
+    assert result.error == "blender_request_invalid"
+    assert source.read_bytes() == b"fixture"

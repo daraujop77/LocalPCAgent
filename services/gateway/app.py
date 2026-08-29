@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hmac
 import json
 import logging
 from collections.abc import Mapping
@@ -9,7 +10,7 @@ from dataclasses import dataclass
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 from integrations.blender.service import BlenderIntegration
 from integrations.pc.service import PcIntegration
@@ -29,6 +30,7 @@ from services.codex.service import (
     SubprocessCodexBackend,
     coding_task_from_payload,
 )
+from services.gateway.artifacts import ArtifactCatalog
 from services.privileged_helper.service import PrivilegedHelperService
 from services.workflows.definitions import blender_workflow, sc2_workflow
 from services.workflows.service import WorkflowService
@@ -69,10 +71,12 @@ class GatewayApp:
             ),
             permissions,
         )
+        memory = MemoryService(resolved_settings.memory_root)
         hermes = HermesService(
             model_client or HttpQwenClient(resolved_settings),
             ModelRouter(),
             codex=codex,
+            memory=memory,
         )
         blender = BlenderIntegration(
             permissions,
@@ -86,10 +90,10 @@ class GatewayApp:
             workspace_root=resolved_settings.sc2_workspace_root,
             artifact_root=resolved_settings.artifact_root,
         )
-        memory = MemoryService(resolved_settings.memory_root)
         workflows = WorkflowService(resolved_settings.workflow_storage_root, memory=memory)
         workflows.register(blender_workflow(blender, memory))
         workflows.register(sc2_workflow(sc2, memory))
+        workflows.recover_incomplete()
         return cls(
             settings=resolved_settings,
             workflows=workflows,
@@ -107,8 +111,15 @@ class GatewayApp:
             "gateway": HealthStatus(
                 name="gateway",
                 status="ok",
-                ready=True,
-                details={"bind": self.settings.host, "port": self.settings.port},
+                ready=not self.settings.allow_remote or bool(self.settings.api_token),
+                details={
+                    "bind": self.settings.host if self.settings.allow_remote else "127.0.0.1",
+                    "port": self.settings.port,
+                    "authentication": "bearer_token"
+                    if self.settings.api_token
+                    else "none_local_only",
+                    "allowed_origins": list(self.settings.allowed_origins),
+                },
             ),
             "workflows": self.workflows.health(),
             "hermes": self.hermes.health(),
@@ -133,6 +144,102 @@ class GatewayApp:
             "environment": self.settings.environment,
             "checks": {name: check.to_dict() for name, check in checks.items()},
         }
+
+    def authorize_http(
+        self, method: str, path: str, headers: Mapping[str, str]
+    ) -> tuple[int, dict[str, object]] | None:
+        """Apply the M14 token, origin, and browser-write checks at the socket edge."""
+
+        route = urlsplit(path).path
+        if route in {"/", "/health", "/health/live", "/health/ready", "/api/v1/health"}:
+            return None
+        token = self.settings.api_token
+        if self.settings.allow_remote and not token:
+            return HTTPStatus.SERVICE_UNAVAILABLE, {
+                "success": False,
+                "error": "remote_auth_not_configured",
+            }
+        if token:
+            authorization = headers.get("Authorization", "")
+            expected = f"Bearer {token}"
+            if not hmac.compare_digest(authorization, expected):
+                return HTTPStatus.UNAUTHORIZED, {
+                    "success": False,
+                    "error": "authentication_required",
+                }
+        origin = headers.get("Origin")
+        if origin:
+            if origin not in self.settings.allowed_origins:
+                return HTTPStatus.FORBIDDEN, {
+                    "success": False,
+                    "error": "origin_not_allowed",
+                }
+            if method not in {"GET", "HEAD", "OPTIONS"} and (
+                not token or not hmac.compare_digest(headers.get("X-Personal-AI-CSRF", ""), token)
+            ):
+                return HTTPStatus.FORBIDDEN, {
+                    "success": False,
+                    "error": "csrf_token_required",
+                }
+        return None
+
+    def cors_origin(self, headers: Mapping[str, str]) -> str | None:
+        origin = headers.get("Origin")
+        return origin if origin in self.settings.allowed_origins else None
+
+    def artifacts(
+        self,
+        *,
+        run_id: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict[str, object]]:
+        catalog = ArtifactCatalog(self.settings.artifact_root, self.workflows)
+        return [item.to_dict() for item in catalog.list(run_id=run_id, limit=limit, offset=offset)]
+
+    def artifact_download(
+        self,
+        artifact_id: str,
+        *,
+        run_id: str | None = None,
+    ) -> tuple[bytes, str, dict[str, object]]:
+        catalog = ArtifactCatalog(self.settings.artifact_root, self.workflows)
+        metadata = catalog.metadata(artifact_id, run_id=run_id)
+        return (
+            catalog.resolve(artifact_id, run_id=run_id).read_bytes(),
+            metadata.content_type,
+            metadata.to_dict(),
+        )
+
+    def event_stream(
+        self,
+        run_id: str,
+        *,
+        after_event_id: str | None = None,
+        event_type: str | None = None,
+        limit: int = 100,
+    ) -> str:
+        self.workflows.get(run_id)
+        events = self.workflows.events(
+            run_id,
+            after_event_id=after_event_id,
+            event_type=event_type,
+            limit=limit,
+        )
+        chunks = []
+        for event in events:
+            chunks.append(
+                "id: "
+                + str(event.get("event_id", ""))
+                + "\n"
+                + "event: "
+                + str(event.get("event_type", "message"))
+                + "\n"
+                + "data: "
+                + json.dumps(event, ensure_ascii=False, sort_keys=True)
+                + "\n\n"
+            )
+        return "".join(chunks)
 
     def tool_catalog(self) -> dict[str, Any]:
         return {
@@ -160,8 +267,13 @@ class GatewayApp:
                     "execution": (
                         "enabled_controlled_allowlisted"
                         if provider.provider_name == "pc"
+                        else "enabled_headless_and_fixture_boundary"
+                        if provider.provider_name == "blender"
+                        and provider.health().details.get("blender_available")
+                        else "enabled_fixture_boundary_live_unavailable"
+                        if provider.provider_name == "blender"
                         else "enabled_structured_project_boundary"
-                        if provider.provider_name in {"blender", "sc2"}
+                        if provider.provider_name == "sc2"
                         else "disabled_until_future_milestone"
                     ),
                 }
@@ -175,7 +287,9 @@ class GatewayApp:
         path: str,
         body: bytes | Mapping[str, object] | None = None,
     ) -> tuple[int, dict[str, Any]]:
-        route = urlsplit(path).path
+        parsed = urlsplit(path)
+        route = parsed.path
+        query = parse_qs(parsed.query, keep_blank_values=False)
         if route == "/api/v1/chat":
             if method != "POST":
                 return HTTPStatus.METHOD_NOT_ALLOWED, {"error": "method_not_allowed"}
@@ -216,14 +330,24 @@ class GatewayApp:
             if method == "POST":
                 return self._dispatch_approval_create(body)
             if method == "GET":
-                return HTTPStatus.OK, {
-                    "approvals": [item.to_dict() for item in self.permissions.list_requests()]
-                }
+                approvals = [item.to_dict() for item in self.permissions.list_requests()]
+                approvals = _filter_records(
+                    approvals,
+                    status=_query_value(query, "status"),
+                    field="status",
+                    secondary=_query_value(query, "action"),
+                    secondary_field="action",
+                )
+                return HTTPStatus.OK, _paged("approvals", approvals, query)
             return HTTPStatus.METHOD_NOT_ALLOWED, {"error": "method_not_allowed"}
         if route == "/api/v1/approvals/events":
             if method != "GET":
                 return HTTPStatus.METHOD_NOT_ALLOWED, {"error": "method_not_allowed"}
-            return HTTPStatus.OK, {"events": [item.to_dict() for item in self.permissions.events()]}
+            events = [item.to_dict() for item in self.permissions.events()]
+            event_type = _query_value(query, "event_type")
+            if event_type:
+                events = [item for item in events if item.get("event_type") == event_type]
+            return HTTPStatus.OK, _paged("events", events, query)
         if route.startswith("/api/v1/approvals/"):
             return self._dispatch_approval_route(method, route, body)
         if route == "/api/v1/privileged/invoke":
@@ -236,8 +360,25 @@ class GatewayApp:
             if method != "GET":
                 return HTTPStatus.METHOD_NOT_ALLOWED, {"error": "method_not_allowed"}
             return HTTPStatus.OK, {"workflows": self.workflows.definitions()}
+        if route == "/api/v1/artifacts" and method == "GET":
+            catalog = ArtifactCatalog(self.settings.artifact_root, self.workflows)
+            records = [
+                item.to_dict()
+                for item in catalog.list(run_id=_query_value(query, "run_id"), limit=10_000)
+            ]
+            return HTTPStatus.OK, _paged("artifacts", records, query)
+        if route.startswith("/api/v1/artifacts/") and method == "GET":
+            artifact_id = unquote(route.removeprefix("/api/v1/artifacts/"))
+            try:
+                catalog = ArtifactCatalog(self.settings.artifact_root, self.workflows)
+                return HTTPStatus.OK, catalog.metadata(
+                    artifact_id,
+                    run_id=_query_value(query, "run_id"),
+                ).to_dict()
+            except (FileNotFoundError, PermissionError, ValueError) as exc:
+                return HTTPStatus.NOT_FOUND, {"error": "artifact_not_found", "details": str(exc)}
         if route.startswith("/api/v1/runs/"):
-            return self._dispatch_workflow_control(method, route, body)
+            return self._dispatch_workflow_control(method, route, body, query)
         if route == "/api/v1/memory/semantic" and method == "POST":
             return self._dispatch_memory_semantic(body)
         if route == "/api/v1/memory/skills" and method == "POST":
@@ -275,23 +416,45 @@ class GatewayApp:
             status = HTTPStatus.OK if check.ready else HTTPStatus.SERVICE_UNAVAILABLE
             return status, check.to_dict()
         if route == "/api/v1/runs":
-            return HTTPStatus.OK, {"runs": self.workflows.list_runs()}
+            runs = self.workflows.list_runs(
+                status=_query_value(query, "status"),
+                workflow=_query_value(query, "workflow"),
+            )
+            return HTTPStatus.OK, _paged("runs", runs, query)
         if route == "/api/v1/memory/episodes" and method == "GET":
             if self.memory is None:
                 return HTTPStatus.NOT_FOUND, {"error": "memory_not_configured"}
-            return HTTPStatus.OK, {
-                "episodes": [item.to_dict() for item in self.memory.episodes.list()]
-            }
+            limit, offset = _pagination_values(query)
+            search = _query_value(query, "query")
+            episodes = (
+                self.memory.episodes.search(search, limit=10_000)
+                if search
+                else self.memory.episodes.list(limit=10_000)
+            )
+            success = _query_value(query, "success")
+            if success in {"true", "false"}:
+                episodes = [item for item in episodes if item.success == (success == "true")]
+            records = [item.to_dict() for item in episodes]
+            return HTTPStatus.OK, _paged("episodes", records, query, limit=limit, offset=offset)
         if route == "/api/v1/memory/semantic" and method == "GET":
             if self.memory is None:
                 return HTTPStatus.NOT_FOUND, {"error": "memory_not_configured"}
-            return HTTPStatus.OK, {
-                "records": [item.to_dict() for item in self.memory.semantic.list()]
-            }
+            records = [item.to_dict() for item in self.memory.semantic.list()]
+            key = _query_value(query, "key")
+            if key:
+                records = [item for item in records if item.get("key") == key]
+            return HTTPStatus.OK, _paged("records", records, query)
         if route == "/api/v1/memory/skills" and method == "GET":
             if self.memory is None:
                 return HTTPStatus.NOT_FOUND, {"error": "memory_not_configured"}
-            return HTTPStatus.OK, {"skills": [item.to_dict() for item in self.memory.skills.list()]}
+            skills = [item.to_dict() for item in self.memory.skills.list()]
+            name = _query_value(query, "name")
+            status = _query_value(query, "status")
+            if name:
+                skills = [item for item in skills if item.get("name") == name]
+            if status:
+                skills = [item for item in skills if item.get("status") == status]
+            return HTTPStatus.OK, _paged("skills", skills, query)
         return HTTPStatus.NOT_FOUND, {"error": "not_found", "path": route}
 
     def _dispatch_chat(
@@ -441,7 +604,9 @@ class GatewayApp:
         method: str,
         route: str,
         body: bytes | Mapping[str, object] | None,
+        query: Mapping[str, list[str]] | None = None,
     ) -> tuple[int, dict[str, Any]]:
+        query = query or {}
         parts = route.removeprefix("/api/v1/runs/").split("/")
         if len(parts) == 1 and method == "GET":
             try:
@@ -453,7 +618,17 @@ class GatewayApp:
                 self.workflows.get(parts[0])
             except KeyError as exc:
                 return HTTPStatus.NOT_FOUND, {"error": "run_not_found", "details": str(exc)}
-            return HTTPStatus.OK, {"events": self.workflows.events(parts[0])}
+            limit, _ = _pagination_values(query)
+            events = self.workflows.events(
+                parts[0],
+                after_event_id=_query_value(query, "after"),
+                event_type=_query_value(query, "event_type"),
+                limit=limit,
+            )
+            return HTTPStatus.OK, {
+                "events": events,
+                "pagination": {"limit": limit, "count": len(events)},
+            }
         if (
             len(parts) != 2
             or method != "POST"
@@ -519,6 +694,11 @@ class GatewayApp:
             episodes = payload.get("source_episode_ids", [])
             if not isinstance(steps, list) or not isinstance(episodes, list):
                 raise ValueError("steps and source_episode_ids must be arrays")
+            known_episode_ids = {
+                episode.episode_id for episode in self.memory.episodes.list(limit=10_000)
+            }
+            if any(not isinstance(item, str) or item not in known_episode_ids for item in episodes):
+                raise ValueError("source_episode_ids must reference recorded episodes")
             skill = self.memory.skills.create_candidate(
                 name=name,
                 steps=steps,
@@ -708,6 +888,58 @@ class GatewayApp:
         return body
 
 
+def _query_value(query: Mapping[str, list[str]], name: str) -> str | None:
+    values = query.get(name, [])
+    return values[0] if values else None
+
+
+def _pagination_values(query: Mapping[str, list[str]]) -> tuple[int, int]:
+    try:
+        limit = int(_query_value(query, "limit") or "50")
+        offset = int(_query_value(query, "offset") or "0")
+    except ValueError:
+        return 50, 0
+    return min(max(limit, 1), 100), max(offset, 0)
+
+
+def _paged(
+    key: str,
+    records: list[dict[str, object]],
+    query: Mapping[str, list[str]],
+    *,
+    limit: int | None = None,
+    offset: int | None = None,
+) -> dict[str, object]:
+    if limit is None or offset is None:
+        limit, offset = _pagination_values(query)
+    items = records[offset : offset + limit]
+    return {
+        key: items,
+        "pagination": {
+            "limit": limit,
+            "offset": offset,
+            "count": len(items),
+            "total": len(records),
+            "has_more": offset + len(items) < len(records),
+        },
+    }
+
+
+def _filter_records(
+    records: list[dict[str, object]],
+    *,
+    status: str | None,
+    field: str,
+    secondary: str | None,
+    secondary_field: str,
+) -> list[dict[str, object]]:
+    if status:
+        records = [record for record in records if record.get(field) == status]
+    if secondary:
+        records = [record for record in records if record.get(secondary_field) == secondary]
+    return records
+
+
 class GatewayRequestHandler(BaseHTTPRequestHandler):
     """HTTP adapter kept separate so dispatch can be tested without sockets."""
 
@@ -719,7 +951,79 @@ class GatewayRequestHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802 - required by BaseHTTPRequestHandler
         self._handle("POST")
 
+    def do_OPTIONS(self) -> None:  # noqa: N802 - required by BaseHTTPRequestHandler
+        origin = self.headers.get("Origin")
+        if origin and origin in self.app.settings.allowed_origins:
+            self.send_response(HTTPStatus.NO_CONTENT)
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header(
+                "Access-Control-Allow-Headers", "Authorization, Content-Type, X-Personal-AI-CSRF"
+            )
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Vary", "Origin")
+            self.end_headers()
+            return
+        self.send_error(HTTPStatus.FORBIDDEN, "origin_not_allowed")
+
     def _handle(self, method: str) -> None:
+        headers = {key: value for key, value in self.headers.items()}
+        denied = self.app.authorize_http(method, self.path, headers)
+        if denied is not None:
+            self._send_json(denied[0], denied[1], headers)
+            return
+        route = urlsplit(self.path).path
+        if route.startswith("/api/v1/artifacts/") and method == "GET":
+            artifact_id = unquote(route.removeprefix("/api/v1/artifacts/"))
+            query = parse_qs(urlsplit(self.path).query, keep_blank_values=False)
+            try:
+                payload, content_type, metadata = self.app.artifact_download(
+                    artifact_id,
+                    run_id=_query_value(query, "run_id"),
+                )
+            except FileNotFoundError:
+                self._send_json(HTTPStatus.NOT_FOUND, {"error": "artifact_not_found"}, headers)
+                return
+            except (PermissionError, ValueError) as exc:
+                self._send_json(
+                    HTTPStatus.FORBIDDEN,
+                    {"error": "artifact_access_denied", "details": str(exc)},
+                    headers,
+                )
+                return
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(payload)))
+            self.send_header("Content-Disposition", f'attachment; filename="{metadata["name"]}"')
+            self._send_cors(headers)
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+        if (
+            route.startswith("/api/v1/runs/")
+            and route.endswith("/events/stream")
+            and method == "GET"
+        ):
+            parts = route.removeprefix("/api/v1/runs/").removesuffix("/events/stream")
+            query = parse_qs(urlsplit(self.path).query, keep_blank_values=False)
+            try:
+                body = self.app.event_stream(
+                    parts.rstrip("/"),
+                    after_event_id=_query_value(query, "after")
+                    or self.headers.get("Last-Event-ID"),
+                    event_type=_query_value(query, "event_type"),
+                    limit=_pagination_values(query)[0],
+                ).encode("utf-8")
+            except KeyError:
+                self._send_json(HTTPStatus.NOT_FOUND, {"error": "run_not_found"}, headers)
+                return
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Content-Length", str(len(body)))
+            self._send_cors(headers)
+            self.end_headers()
+            self.wfile.write(body)
+            return
         body = None
         if method == "POST":
             try:
@@ -728,12 +1032,24 @@ class GatewayRequestHandler(BaseHTTPRequestHandler):
                 content_length = 0
             body = self.rfile.read(content_length)
         status, payload = self.app.dispatch(method, self.path, body)
+        self._send_json(status, payload, headers)
+
+    def _send_json(
+        self, status: int, payload: Mapping[str, object], headers: Mapping[str, str]
+    ) -> None:
         body = json.dumps(payload).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        self._send_cors(headers)
         self.end_headers()
         self.wfile.write(body)
+
+    def _send_cors(self, headers: Mapping[str, str]) -> None:
+        origin = self.app.cors_origin(headers)
+        if origin:
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
 
     def log_message(self, format_string: str, *args: object) -> None:
         logger.info("http_request", extra={"http": format_string % args})
@@ -742,6 +1058,8 @@ class GatewayRequestHandler(BaseHTTPRequestHandler):
 def serve(app: GatewayApp) -> None:
     """Run the local gateway until interrupted."""
 
+    if app.settings.allow_remote and not app.settings.api_token:
+        raise RuntimeError("PERSONAL_AI_API_TOKEN is required before remote binding is enabled")
     bind_host = app.settings.host if app.settings.allow_remote else "127.0.0.1"
     bound_app = app
 

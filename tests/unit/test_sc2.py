@@ -31,17 +31,23 @@ def test_sc2_project_inspection_search_validation_and_patch(tmp_path) -> None:
     inspected = backend.execute("sc2.project.inspect", target="mod", parameters={})
     found = backend.execute("sc2.search", target="mod", parameters={"query": "Marine"})
     valid = backend.execute("sc2.galaxy.validate", target="mod", parameters={})
+    snapshot = backend.execute("sc2.project.snapshot", target="mod", parameters={})
+    working_copy = snapshot.data["working_copy"]
     patched = backend.execute(
         "sc2.galaxy.patch",
-        target="mod",
+        target=working_copy,
         parameters={"file": "Units.xml", "search": "45", "replace": "50"},
     )
 
     assert inspected.success is True
     assert found.data["matches"]
+    marine = next(item for item in inspected.data["index"] if item["id"] == "Marine")
+    assert marine["fields"][0]["tag"] == "LifeMax"
     assert valid.success is True
+    assert snapshot.success is True
     assert patched.success is True
-    assert "50" in (project / "Units.xml").read_text(encoding="utf-8")
+    assert "45" in (project / "Units.xml").read_text(encoding="utf-8")
+    assert "50" in (tmp_path / working_copy / "Units.xml").read_text(encoding="utf-8")
 
 
 def test_sc2_mutation_is_centrally_approval_gated() -> None:
@@ -57,6 +63,23 @@ def test_sc2_mutation_is_centrally_approval_gated() -> None:
     assert pending.success is False
     assert pending.error == "approval_required"
     assert fake.calls == []
+
+
+def test_sc2_mutation_rejects_original_project(tmp_path) -> None:
+    project = tmp_path / "mod"
+    project.mkdir()
+    (project / "Map.galaxy").write_text("old\n", encoding="utf-8")
+    backend = LocalSc2Backend(workspace_root=tmp_path, artifact_root="artifacts")
+
+    result = backend.execute(
+        "sc2.galaxy.patch",
+        target="mod",
+        parameters={"file": "Map.galaxy", "search": "old", "replace": "new"},
+    )
+
+    assert result.success is False
+    assert result.error == "sc2_request_invalid"
+    assert (project / "Map.galaxy").read_text(encoding="utf-8") == "old\n"
 
 
 def test_sc2_workflow_creates_validated_packaged_working_version(tmp_path) -> None:

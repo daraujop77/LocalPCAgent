@@ -183,3 +183,35 @@ Decision: Store semantic facts, append-only execution episodes, and versioned pr
 Reason: One successful run is not enough evidence for an autonomous skill. Separate stores preserve auditability and make learning reversible and reviewable.
 
 Date: 2026-08-29
+
+## ADR-024 — Enforce managed working-copy roots in the provider
+
+Decision: Blender and SC2 mutation targets, generated render outputs, package outputs, and snapshots must resolve below the configured artifact root. Capability discovery exposes only actions with an implemented backend; future policy action names remain reserved but are not advertised as available.
+
+Reason: An approval proves that a caller requested an action, but it must not turn an original source file into an accidental working copy. A single managed root makes the source-preservation rule enforceable at the backend boundary.
+
+Date: 2026-08-29
+
+## ADR-025 — Recover interrupted workflow runs from atomic checkpoints
+
+Decision: Persist the workflow run index through a same-directory temporary file and atomic replacement. Runs found in `running` or `queued` state after process startup become `interrupted` and are resumed after their definitions are registered. LangGraph remains an optional compatibility adapter until migration tests cover the stored contract.
+
+Reason: A process restart must not silently lose a run or treat a partially written index as authoritative. Recovery from the last completed node is useful immediately while preserving a stable path for a future LangGraph-backed executor.
+
+Date: 2026-08-29
+
+## ADR-026 — Keep the M14 web edge private-by-default
+
+Decision: The development server binds to loopback by default. Remote binding requires a configured bearer token; browser origins are explicitly allowlisted and unsafe browser methods require a matching CSRF header. Artifact downloads are confined to the artifact root and workflow-internal files are excluded.
+
+Reason: The gateway is the first PWA-facing surface, but it must not expose raw model, integration, or privileged services without an explicit private-network security configuration.
+
+Date: 2026-08-29
+
+## ADR-027 — Suggest skills from repeated successes without auto-promotion
+
+Decision: The memory composition root may create a candidate after repeated successful episodes with the same workflow/task and recorded procedure. Candidate provenance is retained, explicit validation remains required, and promotion is a separate operation.
+
+Reason: This creates a useful M13 learning boundary without allowing one run or an unreviewed pattern to change stable behavior automatically.
+
+Date: 2026-08-29

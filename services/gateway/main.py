@@ -1,4 +1,4 @@
-"""Gateway process entry point for the local M5-M13 platform."""
+"""Gateway process entry point for the local M14 platform."""
 
 from personal_ai.config import Settings
 from personal_ai.logging import configure_logging

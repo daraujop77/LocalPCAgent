@@ -2,7 +2,7 @@
 
 ## Scope
 
-This document describes the implementation through M13 — Skill Learning foundations. The full product intent remains in MasterPlan/MasterPlan.md. M4 centralizes action levels, allowlists, scoped approval requests, audit events, and a fail-closed privileged-helper boundary. M5-M13 add bounded Blender/SC2 project boundaries, durable graph-compatible workflows, and explicit memory/skill promotion. Live game/editor control, remote access, and unrestricted PC control remain disabled.
+This document describes the implementation through the bounded M14 — Web Gateway foundation. The full product intent remains in MasterPlan/MasterPlan.md. M4 centralizes action levels, allowlists, scoped approval requests, audit events, and a fail-closed privileged-helper boundary. M5-M13 add bounded Blender/SC2 project boundaries, restart-recoverable graph-compatible workflows, and explicit memory/skill promotion. M14 adds an authenticated socket edge, replayable events, artifact access, and filtered API reads. Live game/editor control, a frontend PWA, and unrestricted PC control remain disabled.
 
 ## Architectural principles
 
@@ -13,7 +13,7 @@ This document describes the implementation through M13 — Skill Learning founda
 - Every future tool returns a structured result and declares its approval level.
 - The repository is the persistent handoff mechanism.
 
-## M5-M13 topology
+## M5-M14 topology
 
 ```text
 HTTP client / future PWA
@@ -37,18 +37,20 @@ services/gateway
           |                 v
           |       local Qwen HTTP endpoint
           |
-          +-----------> services/workflows (durable JSON graph boundary)
+          +-----------> services/workflows (durable JSON graph boundary + recovery)
           +-----------> services/codex (permission-gated CLI handoff)
           +-----------> integrations/pc (policy-gated Windows control)
           +-----------> services/privileged_helper (disabled, fail closed)
           +-----------> integrations/blender (headless CLI + fixture bridge)
           +-----------> integrations/sc2 (structured directory/ZIP bridge)
-          +-----------> memory (semantic/episodic/procedural JSON stores)
+          +-----------> memory (semantic/episodic/procedural JSON stores + Hermes context)
+
+          +-----------> artifact catalog (metadata/download boundary)
 
 shared contracts/config/logging: src/personal_ai
 ```
 
-The gateway is the composition root for one shared `PermissionService`. Codex, PC, Blender, SC2, and the privileged-helper boundary consult the same immutable action policy. General chat cannot silently trigger a repository or host mutation. Workflow runs use explicit nodes and persisted state; integrations return the common structured result envelope.
+The gateway is the composition root for one shared `PermissionService`. Codex, PC, Blender, SC2, and the privileged-helper boundary consult the same immutable action policy. General chat cannot silently trigger a repository or host mutation. Workflow runs use explicit nodes and persisted state; integrations return the common structured result envelope. The socket adapter applies optional bearer authentication, an explicit CORS origin allowlist, and a CSRF header for browser writes before dispatching API requests.
 
 ## Repository layout
 
@@ -81,7 +83,7 @@ GatewayApp is the composition root. It owns settings, one PermissionService, Her
 
 ### Hermes and local Qwen
 
-HermesService owns one-turn conversational handling. It validates a minimal chat request, asks ModelRouter for a deterministic selection, logs selection/fallback/outcome, and calls the configured ModelClient. HttpQwenClient uses local OpenAI-compatible GET /models and POST /chat/completions endpoints without a runtime SDK dependency. Conversation history is request-only until a later memory milestone.
+HermesService owns one-turn conversational handling. It validates a minimal chat request, asks ModelRouter for a deterministic selection, logs selection/fallback/outcome, adds bounded matching episodic context when memory is configured, and calls the configured ModelClient. HttpQwenClient uses local OpenAI-compatible GET /models and POST /chat/completions endpoints without a runtime SDK dependency. Full conversation history remains request-only.
 
 The default endpoint is http://127.0.0.1:11434/v1, compatible with Ollama. The default M1 model is qwen3.8:27b, which Ollama publishes with a 256K context window and therefore satisfies the installed Hermes runtime's 64K minimum. qwen3:8b and qwen3.5:9b remain installed as optional legacy models on the inspected host. The endpoint and model are configurable through PERSONAL_AI_QWEN_BASE_URL and PERSONAL_AI_QWEN_MODEL.
 
@@ -113,19 +115,19 @@ The `scripts/pc-acceptance.ps1` script is intentionally opt-in. It launches an a
 
 ### Blender bridge
 
-`BlenderIntegration` uses the central permission service and a replaceable backend. `LocalBlenderBackend` supports JSON scene fixtures for deterministic tests and invokes a configured Blender executable in background mode for `.blend` inspection, controlled `bpy` operations, working-copy changes, and preview/final rendering. Callers provide structured operations; free-form Python is not accepted. Every mutation targets a working copy, and source files are never overwritten.
+`BlenderIntegration` uses the central permission service and a replaceable backend. `LocalBlenderBackend` supports JSON scene fixtures for deterministic tests and invokes a configured Blender executable in background mode for `.blend` inspection, controlled `bpy` operations, working-copy changes, and preview/final rendering. Callers provide structured operations; free-form Python is not accepted. Mutation targets are required to resolve below the managed artifact root; source files outside that root are rejected even when the caller has an approval.
 
 ### SC2 bridge
 
-`Sc2Integration` uses the central permission service and `LocalSc2Backend`. It inspects bounded project directories and ZIP-compatible `.SC2Map`/`.SC2Mod` files, searches text/XML, reads structured records, creates snapshots, patches text in a working copy, validates Galaxy syntax heuristically, and packages versions. Galaxy Editor and game launch are explicit disabled results until an audited executable/tool contract is added.
+`Sc2Integration` uses the central permission service and `LocalSc2Backend`. It inspects bounded project directories and ZIP-compatible `.SC2Map`/`.SC2Mod` files, searches text/XML, returns an entity/field index for structured dependencies, creates snapshots, patches text only in the managed working-copy root, validates Galaxy syntax heuristically, and packages versions. Galaxy Editor and game launch are explicit disabled results until an audited executable/tool contract is added.
 
 ### Workflows
 
-`WorkflowService` is a durable graph-compatible runner. Each named node receives JSON-compatible state, emits lifecycle events, and checkpoints after completion under `artifacts/workflows/`. Runs can pause, resume, retry, cancel, and accept steering instructions. The engine is intentionally independent of the LangGraph import so the later adapter can preserve the persisted run shape and events.
+`WorkflowService` is a durable graph-compatible runner. Each named node receives JSON-compatible state, emits lifecycle events, and checkpoints atomically after completion under `artifacts/workflows/`. Runs interrupted during service downtime are marked and can be automatically recovered after definitions are registered; runs can also pause, resume, retry, cancel, and accept steering instructions. The engine is intentionally independent of the LangGraph import; the optional adapter is a compatibility probe, not the default executor yet.
 
 ### Memory and learning
 
-`MemoryService` composes a semantic last-write-wins JSON store, append-only episodic JSONL records, and versioned procedural skills. A candidate skill is generated with episode provenance, must pass repeated explicit validation, and is promoted only by an explicit call. A failed candidate never overwrites a promoted version.
+`MemoryService` composes a semantic last-write-wins JSON store, append-only episodic JSONL records, and versioned procedural skills. Hermes receives bounded search context from matching episodes. Repeated successful workflow procedures can create an unpromoted candidate with episode provenance; a candidate must pass repeated explicit validation and is promoted only by an explicit call. A failed candidate never overwrites a promoted version.
 
 ### Integrations
 
@@ -135,13 +137,13 @@ Each provider implements the common ToolProvider contract. PC remains the contro
 
 `PermissionPolicy` loads the checked-in JSON-compatible `policies/permissions.yaml` and validates exact levels 0–3, action assignments, PC allowlists, non-admin main-process configuration, and privileged-helper allowlists. Levels 0/1 are automatic; levels 2/3 require approval. Requests are scoped by a canonical SHA-256 digest of action, target, and sanitized parameters, expire after the policy TTL, and are consumed once. Rejected, cancelled, expired, mismatched, reused, and unknown approvals all fail closed.
 
-The M4 approval/event store is thread-safe but process-local. It is intentionally not a durable authorization system. The API exposes request and decision lifecycle for local development; loopback binding remains essential because authentication is not implemented.
+The M4 approval/event store is thread-safe but process-local. It is intentionally not a durable authorization system. The API exposes request and decision lifecycle for local development. Remote binding additionally requires a bearer token, and browser origins/writes are constrained by the M14 socket policy; durable identity and approval storage remain future work.
 
 `PrivilegedHelperService` defines the future transport/backend contract. Its M4 backend is disabled. Policy authorization occurs before a future helper call, privileged actions must be level 3 and helper-allowlisted, and accepted approval alone is insufficient. With helper policy disabled, the request returns `privileged_helper_unavailable` without consuming the approval or invoking any transport. The main gateway never requests administrator privileges.
 
 ### Observability
 
-Logs are emitted as one JSON object per line through the standard library. Permission requests/decisions/consumption also create process-local structured audit events. Workflow events are persisted as JSONL and run state exposes task, current step, tools, artifacts, changed files, warnings, errors, approval state, and iteration. Health identifies permissions, memory, workflows, Hermes/Qwen, Codex, PC, Blender, SC2, and the disabled privileged boundary.
+Logs are emitted as one JSON object per line through the standard library. Permission requests/decisions/consumption also create process-local structured audit events. Workflow events are persisted as JSONL and can be replayed as run-scoped SSE with an event cursor. Run state exposes task, current step, tools, artifacts, changed files, warnings, errors, approval state, and iteration. Artifact metadata includes content type, size, and run provenance while downloads are limited to the artifact root. Health identifies permissions, memory, workflows, Hermes/Qwen, Codex, PC, Blender, SC2, and the disabled privileged boundary.
 
 ## Development contract
 

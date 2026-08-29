@@ -20,6 +20,8 @@ def test_settings_accept_explicit_environment_overrides() -> None:
             "PERSONAL_AI_ENVIRONMENT": "test",
             "PERSONAL_AI_LOG_LEVEL": "debug",
             "PERSONAL_AI_ALLOW_REMOTE": "true",
+            "PERSONAL_AI_API_TOKEN": "remote-secret",
+            "PERSONAL_AI_ALLOWED_ORIGINS": "https://pwa.example, http://localhost:3000",
             "PERSONAL_AI_QWEN_BASE_URL": "http://127.0.0.1:1234/v1",
             "PERSONAL_AI_QWEN_MODEL": "qwen-test",
             "PERSONAL_AI_QWEN_TIMEOUT_SECONDS": "12.5",
@@ -33,6 +35,8 @@ def test_settings_accept_explicit_environment_overrides() -> None:
     assert settings.environment == "test"
     assert settings.log_level == "DEBUG"
     assert settings.allow_remote is True
+    assert settings.api_token == "remote-secret"
+    assert settings.allowed_origins == ("https://pwa.example", "http://localhost:3000")
     assert settings.qwen_base_url == "http://127.0.0.1:1234/v1"
     assert settings.qwen_model == "qwen-test"
     assert settings.qwen_timeout_seconds == 12.5

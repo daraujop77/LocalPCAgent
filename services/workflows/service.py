@@ -11,6 +11,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import logging
+import os
 import threading
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, field
@@ -197,7 +198,7 @@ class WorkflowService:
     ) -> WorkflowRun:
         with self._lock:
             run = self._require(run_id)
-            if run.status not in {"paused", "failed", "queued"}:
+            if run.status not in {"paused", "failed", "interrupted", "queued"}:
                 raise ValueError(f"workflow {run_id} cannot resume from {run.status}")
             definition = self._resolve_definition(run.workflow)
             run.status = "queued"
@@ -219,6 +220,16 @@ class WorkflowService:
 
     def retry(self, run_id: str, *, background: bool = True) -> WorkflowRun:
         return self.resume(run_id, background=background)
+
+    def recover_incomplete(self, *, background: bool = True) -> list[WorkflowRun]:
+        """Resume runs that were interrupted while the service was offline."""
+
+        with self._lock:
+            run_ids = [run.run_id for run in self._runs.values() if run.status == "interrupted"]
+        recovered = []
+        for run_id in run_ids:
+            recovered.append(self.resume(run_id, background=background))
+        return recovered
 
     def pause(self, run_id: str) -> WorkflowRun:
         with self._lock:
@@ -267,25 +278,50 @@ class WorkflowService:
         with self._lock:
             return _copy_run(self._require(run_id))
 
-    def list_runs(self, *, status: str | None = None) -> list[dict[str, object]]:
+    def list_runs(
+        self,
+        *,
+        status: str | None = None,
+        workflow: str | None = None,
+    ) -> list[dict[str, object]]:
         with self._lock:
-            runs = [run for run in self._runs.values() if status is None or run.status == status]
+            runs = [
+                run
+                for run in self._runs.values()
+                if (status is None or run.status == status)
+                and (workflow is None or run.workflow == workflow)
+            ]
             return [
                 run.to_dict()
                 for run in sorted(runs, key=lambda item: item.started_at, reverse=True)
             ]
 
-    def events(self, run_id: str | None = None) -> list[dict[str, object]]:
+    def events(
+        self,
+        run_id: str | None = None,
+        *,
+        after_event_id: str | None = None,
+        event_type: str | None = None,
+        limit: int | None = None,
+    ) -> list[dict[str, object]]:
         if not self.events_path.exists():
             return []
         events: list[dict[str, object]] = []
+        after_seen = after_event_id is None
         for line in self.events_path.read_text(encoding="utf-8").splitlines():
             if not line.strip():
                 continue
             event = json.loads(line)
-            if run_id is None or event.get("run_id") == run_id:
-                events.append(event)
-        return events
+            if not after_seen:
+                if event.get("event_id") == after_event_id:
+                    after_seen = True
+                continue
+            if run_id is not None and event.get("run_id") != run_id:
+                continue
+            if event_type is not None and event.get("event_type") != event_type:
+                continue
+            events.append(event)
+        return events if limit is None else events[: max(0, limit)]
 
     def _launch(self, run_id: str, definition: WorkflowDefinition) -> None:
         thread = threading.Thread(
@@ -366,7 +402,7 @@ class WorkflowService:
                     self._persist_run(run)
                     self._emit(run, "workflow.node.failed", {"node": node.name, "error": str(exc)})
                     if self.memory is not None:
-                        self.memory.episodes.record(
+                        self.memory.record_episode(
                             run_id=run.run_id,
                             workflow=run.workflow,
                             task=run.task,
@@ -430,10 +466,12 @@ class WorkflowService:
 
     def _persist_run(self, run: WorkflowRun) -> None:
         records = [item.to_dict() for item in self._runs.values()]
-        self.runs_path.write_text(
+        temporary = self.runs_path.with_suffix(".json.tmp")
+        temporary.write_text(
             json.dumps(records, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
+        os.replace(temporary, self.runs_path)
 
     def _emit(self, run: WorkflowRun, event_type: str, details: Mapping[str, object]) -> None:
         event = {
@@ -461,8 +499,8 @@ class WorkflowService:
                 workflow=str(record.get("workflow", "")),
                 task=str(record.get("task", "")),
                 status=(
-                    "failed"
-                    if record.get("status") == "running"
+                    "interrupted"
+                    if record.get("status") in {"running", "queued"}
                     else str(record.get("status", "failed"))
                 ),
                 state=record.get("state", {}) if isinstance(record.get("state"), dict) else {},

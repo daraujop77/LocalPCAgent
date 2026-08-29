@@ -60,7 +60,7 @@ def test_gateway_exposes_discovery_without_tool_execution() -> None:
     assert "hermes.codex_handoff" in payload["hermes"]["capabilities"]
     assert payload["codex"]["execution"] == "enabled_if_cli_available"
     assert payload["providers"][0]["execution"] == "enabled_controlled_allowlisted"
-    assert payload["providers"][1]["execution"] == "enabled_structured_project_boundary"
+    assert payload["providers"][1]["execution"] == "enabled_fixture_boundary_live_unavailable"
     assert payload["providers"][2]["execution"] == "enabled_structured_project_boundary"
 
 
@@ -175,6 +175,51 @@ def test_gateway_exposes_structured_integrations_and_workflow_controls() -> None
     status, events = app.dispatch("GET", f"/api/v1/runs/{run['run_id']}/events")
     assert status == HTTPStatus.OK
     assert events["events"][-1]["event_type"] == "run.completed"
+
+
+def test_gateway_supports_filtered_run_pages_and_event_replay(tmp_path) -> None:
+    app = make_test_app()
+    app.workflows = WorkflowService(tmp_path / "runs")
+    app.workflows.register(
+        WorkflowDefinition(
+            "page.fixture",
+            (WorkflowNode("complete", lambda state: {"fixture": True}),),
+        )
+    )
+    _, run = app.dispatch(
+        "POST",
+        "/api/v1/workflows",
+        {"workflow": "page.fixture", "background": False},
+    )
+
+    status, page = app.dispatch("GET", "/api/v1/runs?workflow=page.fixture&limit=1&offset=0")
+    assert status == HTTPStatus.OK
+    assert len(page["runs"]) == 1
+    assert page["pagination"]["total"] == 1
+
+    all_events = app.workflows.events(run["run_id"])
+    status, replay = app.dispatch(
+        "GET",
+        f"/api/v1/runs/{run['run_id']}/events?after={all_events[0]['event_id']}",
+    )
+    assert status == HTTPStatus.OK
+    assert all(event["event_id"] != all_events[0]["event_id"] for event in replay["events"])
+    assert "event: run.completed" in app.event_stream(run["run_id"])
+
+
+def test_remote_gateway_requires_bearer_and_csrf_tokens() -> None:
+    app = make_test_app()
+    app.settings = Settings(
+        allow_remote=True,
+        api_token="test-token",
+        allowed_origins=("https://pwa.example",),
+    )
+
+    assert app.authorize_http("GET", "/api/v1/tools", {})[0] == HTTPStatus.UNAUTHORIZED
+    headers = {"Authorization": "Bearer test-token", "Origin": "https://pwa.example"}
+    assert app.authorize_http("POST", "/api/v1/chat", headers)[0] == HTTPStatus.FORBIDDEN
+    headers["X-Personal-AI-CSRF"] = "test-token"
+    assert app.authorize_http("POST", "/api/v1/chat", headers) is None
 
 
 def test_gateway_codex_route_returns_observable_handoff(tmp_path) -> None:

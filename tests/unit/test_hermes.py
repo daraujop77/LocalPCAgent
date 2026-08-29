@@ -2,6 +2,7 @@ import logging
 
 from personal_ai.chat import ChatRequest
 from personal_ai.hermes import HermesService
+from personal_ai.memory import MemoryService
 from personal_ai.router import ModelRouter
 from tests.support import FakeQwenClient
 
@@ -37,3 +38,24 @@ def test_hermes_falls_back_to_qwen_for_unconfigured_specialist() -> None:
     assert response.model == "qwen-local"
     assert response.routing.selected_model == "grok"
     assert response.fallback_used is True
+
+
+def test_hermes_adds_matching_episode_context(tmp_path) -> None:
+    client = FakeQwenClient()
+    memory = MemoryService(tmp_path / "memory")
+    memory.episodes.record(
+        run_id="run-1",
+        workflow="blender.autonomous",
+        task="export model",
+        success=False,
+        summary="Normals were inverted.",
+        errors=("normals_inverted",),
+    )
+
+    response = HermesService(client, ModelRouter(), memory=memory).chat(
+        ChatRequest(message="What failed last time we exported this Blender model?")
+    )
+
+    assert response.success is True
+    assert len(client.calls[0]) == 2
+    assert "Normals were inverted" in client.calls[0][0].content

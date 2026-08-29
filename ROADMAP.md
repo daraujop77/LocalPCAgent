@@ -1,6 +1,6 @@
 # Roadmap
 
-Status is intentionally conservative. M0 through M13 have bounded local implementations; live application validation and later product surfaces remain planned.
+Status is intentionally conservative. M0 through M4 are complete foundations. M5 through M13 are bounded local foundations with live application and full autonomy gaps called out below. M14 is the bounded gateway API foundation; the frontend and secure remote product surfaces remain planned.
 
 | Milestone | Status | Scope |
 | --- | --- | --- |
@@ -9,16 +9,16 @@ Status is intentionally conservative. M0 through M13 have bounded local implemen
 | M2 — Codex Integration | Complete | Approved observable Codex CLI handoff, working-tree observation, and post-handoff tests |
 | M3 — PC Control | Complete | Allowlisted Windows app/filesystem/process/window/screenshot/input operations |
 | M4 — Permission System | Complete | Central levels, scoped one-time approvals, validated allowlists, fail-closed privileged-helper boundary |
-| M5 — Blender Bridge | Implemented (bounded) | Headless CLI/JSON fixture inspection, working copies, controlled bpy boundary, preview artifacts |
-| M6 — Blender Autonomous Workflow | Implemented (bounded) | Snapshot, inspect, modify, validate, preview, and experience-recording graph |
-| M7 — Durable Blender Workflow | Implemented (graph-compatible) | JSON checkpoints, events, retry, recovery, pause/resume/cancel |
-| M8 — SC2 Inspection | Implemented (structured) | Safe project snapshot, directory/ZIP inspection, search, XML/Galaxy reads |
-| M9 — SC2 Modification | Implemented (working-copy) | Approval-gated structured text patching and validation |
-| M10 — SC2 Test Loop | Implemented (static) | Patch, validate, package, and structured result collection; game launch remains disabled |
-| M11 — Durable SC2 Workflow | Implemented (graph-compatible) | Checkpoints, events, retries, pause/resume/cancel, artifacts, version history |
-| M12 — Experience Memory | Implemented (JSON stores) | Semantic facts and successful/failed execution episodes |
-| M13 — Skill Learning | Implemented (explicit promotion) | Candidate procedures, repeated validation, provenance, versioned promotion |
-| M14 — Web Gateway | Planned | Controlled API for chat, runs, events, approvals, artifacts, status |
+| M5 — Blender Bridge | Foundation complete | Headless CLI/JSON fixture inspection, artifact-root working copies, controlled bpy boundary, preview artifacts; live Blender remains environment-dependent |
+| M6 — Blender Autonomous Workflow | Partial | Explicit operation planning, validation, preview evaluation, revision hook, finalization; natural-language planning and visual revision remain planned |
+| M7 — Durable Blender Workflow | Foundation complete | Atomic JSON checkpoints, event replay, interruption recovery, retry, pause/resume/cancel; LangGraph is not the default executor yet |
+| M8 — SC2 Inspection | Foundation complete | Safe directory/ZIP inspection, search, XML/structured reads, entity/field index; MPQ-native parsing and full dependency resolution remain planned |
+| M9 — SC2 Modification | Foundation complete | Approval-gated text patching only inside managed working copies, validation, packaging |
+| M10 — SC2 Test Loop | Partial | Static patch/validate/package/log contracts; Galaxy Editor/game launch and real verification remain disabled |
+| M11 — Durable SC2 Workflow | Foundation complete | Shared durable workflow/checkpoint/event/artifact boundaries; LangGraph migration and live test recovery remain planned |
+| M12 — Experience Memory | Foundation complete | Semantic/episodic stores, token-scored history lookup, Hermes context injection |
+| M13 — Skill Learning | Foundation complete | Repeated successful procedure candidate suggestions, provenance, explicit validation and promotion |
+| M14 — Web Gateway | Foundation complete | Bearer/CORS/CSRF socket edge, filtered pagination, SSE event replay, artifact metadata/download boundary |
 | M15 — Web Chat | Planned | Responsive mobile-compatible chat |
 | M16 — Monitoring Dashboard | Planned | Runs, tools, models, system usage, workflows, artifacts |
 | M17 — Mobile Approvals | Planned | Approve, reject, steer, pause, resume, cancel from phone |
@@ -33,5 +33,7 @@ Status is intentionally conservative. M0 through M13 have bounded local implemen
 - Do not begin serious SC2 work before Blender automation is stable.
 - Do not add multi-agent infrastructure before real workload demonstrates a need.
 - Do not expose raw Hermes, Qwen, Blender MCP, SC2 MCP, or the privileged helper publicly.
-- M5-M13 live Blender rendering requires a configured Blender executable. SC2 `.SC2Map`/`.SC2Mod` support is limited to directories and ZIP-compatible fixtures; MPQ/game/editor execution requires a future audited adapter.
-- The workflow engine persists a stable graph-compatible shape without requiring LangGraph at runtime; a LangGraph adapter can be added without changing the API or stored state contract.
+- M5-M6 live Blender modification/rendering requires a configured Blender executable and an explicit structured operation plan. Natural-language planning, visual evaluation, and automatic revision require a future model/evaluator boundary.
+- SC2 `.SC2Map`/`.SC2Mod` support is limited to directories and ZIP-compatible fixtures; MPQ-native parsing, Galaxy compiler integration, and game/editor execution require future audited adapters.
+- The workflow engine persists a stable graph-compatible shape and automatically recovers interrupted runs, but the optional LangGraph adapter is not the default executor until migration and crash tests exist.
+- M14 authentication is token-based and intentionally simple for a private/local boundary. Durable identity, durable approvals, frontend PWA, Tailscale policy, and public deployment remain future milestones.

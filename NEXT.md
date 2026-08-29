@@ -1,18 +1,24 @@
 # Next tasks
 
-M5–M13 bounded local implementations are complete. Do not begin M14 without explicit instruction.
+M14 bounded gateway API foundations are complete for this cycle. Continue with M15 only when explicitly requested.
 
-## M14 — Web Gateway
+## M15 — Web Chat / PWA shell
 
-1. Define the authenticated PWA-facing API version and origin/CSRF policy while keeping raw Hermes, Qwen, Blender, SC2, and privileged-helper services private.
-2. Add durable event streaming (SSE initially) from the workflow event store with run-scoped filtering and reconnect support.
-3. Add artifact metadata/download contracts with content-type, size, provenance, and access checks.
-4. Add API pagination and filters for runs, approvals, events, artifacts, memory episodes, and skills.
-5. Add an integration test matrix for the web gateway against loopback and a private-network configuration; keep remote binding disabled by default.
+1. Create the mobile-first PWA shell under `apps/web` for Chat, Runs, Approvals, Artifacts, Models, and System views.
+2. Use the existing `/api/v1` contracts, bearer token, CORS allowlist, CSRF header, pagination, artifact metadata, and SSE replay without exposing raw provider services.
+3. Add browser integration tests for authenticated read/write requests, reconnecting event streams, and artifact download headers.
+4. Keep loopback binding as the default and add a documented local reverse-proxy option only after the PWA contract is stable.
 
-## Deferred live validation
+## M16–M17 — Operations UI
 
-- Configure a supported Blender executable and run the opt-in headless fixture acceptance against a copied `.blend` file.
-- Validate the SC2 bridge against a real project format; add an audited MPQ/Galaxy tool adapter before enabling editor/game launch.
-- Evaluate an optional LangGraph adapter against the persisted `WorkflowRun` and event contracts; do not replace the stable local runner without migration tests.
-- Add durable authenticated approvals before exposing any approval route beyond loopback/private network.
+- Add run monitoring, system/model health, and artifact provenance views.
+- Add mobile approval, reject, steer, pause, resume, and cancel controls with explicit confirmation.
+
+## Deferred platform validation
+
+- Configure a supported Blender executable and run the opt-in headless acceptance against a copied `.blend` file, including real controlled bpy operations.
+- Add natural-language planning, visual evaluation, and an audited revision loop for the Blender workflow.
+- Validate the SC2 bridge against a real project format; add an audited MPQ/Galaxy compiler/tool adapter before enabling editor/game launch.
+- Evaluate LangGraph as the default durable executor against persisted `WorkflowRun`, recovery, approval, and event migration tests.
+- Add durable authenticated approvals and identity before exposing approval routes beyond loopback/private network.
+- Add Tailscale/private-network deployment policy, scheduled jobs, and additional specialists only after the web operations surface is proven.

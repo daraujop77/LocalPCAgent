@@ -1,3 +1,4 @@
+import json
 import warnings
 
 import pytest
@@ -87,3 +88,24 @@ def test_langgraph_adapter_compiles_the_same_explicit_nodes() -> None:
         )
 
     assert graph.invoke({})["ok"] is True
+
+
+def test_interrupted_run_is_recovered_from_checkpoint(tmp_path) -> None:
+    definition = WorkflowDefinition(
+        "recover.workflow",
+        (WorkflowNode("done", lambda state: {"recovered": True}),),
+    )
+    original = WorkflowService(tmp_path / "runs")
+    run = original.start(definition, background=False)
+    payload = json.loads((tmp_path / "runs" / "runs.json").read_text(encoding="utf-8"))
+    payload[0]["status"] = "running"
+    payload[0]["current_step_index"] = 0
+    (tmp_path / "runs" / "runs.json").write_text(json.dumps(payload), encoding="utf-8")
+
+    reloaded = WorkflowService(tmp_path / "runs")
+    assert reloaded.get(run.run_id).status == "interrupted"
+    reloaded.register(definition)
+    recovered = reloaded.recover_incomplete(background=False)
+
+    assert recovered[0].status == "completed"
+    assert recovered[0].state["recovered"] is True

@@ -8,6 +8,7 @@ a database adapter later without changing workflow callers.
 from __future__ import annotations
 
 import json
+import re
 import threading
 from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass, field
@@ -191,11 +192,18 @@ class ExperienceMemory:
         normalized = query.casefold().strip()
         if not normalized:
             return self.list(limit=limit)
-        return [
-            episode
-            for episode in self.list(limit=max(limit, 1000))
-            if normalized in json.dumps(episode.to_dict(), ensure_ascii=False).casefold()
-        ][:limit]
+        terms = tuple(dict.fromkeys(re.findall(r"[a-z0-9_]+", normalized)))
+        if not terms:
+            return []
+        scored: list[tuple[int, int, ExperienceEpisode]] = []
+        for position, episode in enumerate(self.list(limit=max(limit, 1000))):
+            haystack = json.dumps(episode.to_dict(), ensure_ascii=False).casefold()
+            haystack += " failed" if not episode.success else " successful"
+            score = sum(term in haystack for term in terms)
+            if score:
+                scored.append((score, -position, episode))
+        scored.sort(reverse=True, key=lambda item: (item[0], item[1]))
+        return [episode for _, _, episode in scored[:limit]]
 
 
 class SemanticMemory:
@@ -395,6 +403,64 @@ class MemoryService:
         self.episodes = ExperienceMemory(self.root)
         self.semantic = SemanticMemory(self.root)
         self.skills = SkillMemory(self.root)
+
+    def record_episode(
+        self,
+        *,
+        run_id: str,
+        workflow: str,
+        task: str,
+        success: bool,
+        summary: str,
+        inputs: Mapping[str, object] | None = None,
+        outputs: Mapping[str, object] | None = None,
+        errors: Iterable[str] = (),
+        warnings: Iterable[str] = (),
+        artifacts: Iterable[str] = (),
+        tags: Iterable[str] = (),
+        duration_ms: int | None = None,
+        procedure: Iterable[str] = (),
+    ) -> ExperienceEpisode:
+        """Record an episode and suggest, but never promote, repeated procedures."""
+
+        episode = self.episodes.record(
+            run_id=run_id,
+            workflow=workflow,
+            task=task,
+            success=success,
+            summary=summary,
+            inputs=inputs,
+            outputs=outputs,
+            errors=errors,
+            warnings=warnings,
+            artifacts=artifacts,
+            tags=tags,
+            duration_ms=duration_ms,
+        )
+        steps = tuple(str(step).strip() for step in procedure if str(step).strip())
+        if success and steps:
+            self._suggest_repeated_procedure(episode, steps)
+        return episode
+
+    def _suggest_repeated_procedure(
+        self, episode: ExperienceEpisode, steps: tuple[str, ...]
+    ) -> None:
+        matching = [
+            item
+            for item in self.episodes.list(limit=10_000)
+            if item.success
+            and item.workflow == episode.workflow
+            and item.task.casefold() == episode.task.casefold()
+        ]
+        if len(matching) < 2:
+            return
+        name = f"{episode.workflow}.procedure"
+        source_ids = tuple(item.episode_id for item in matching[:5])
+        existing = self.skills.list(name=name)
+        matching_ids = {item.episode_id for item in matching}
+        if any(set(item.source_episode_ids).issubset(matching_ids) for item in existing):
+            return
+        self.skills.create_candidate(name=name, steps=steps, source_episode_ids=source_ids)
 
     def health(self) -> HealthStatus:
         return HealthStatus(

@@ -53,6 +53,33 @@ SC2_ACTIONS = (
     "sc2.package",
 )
 
+# The policy reserves the future editor/game actions, but discovery should
+# expose only the structured project operations that the backend really runs.
+SC2_IMPLEMENTED_ACTIONS = (
+    "sc2.project.inspect",
+    "sc2.project.snapshot",
+    "sc2.project.unpack",
+    "sc2.project.pack",
+    "sc2.search",
+    "sc2.unit.read",
+    "sc2.weapon.read",
+    "sc2.effect.read",
+    "sc2.upgrade.read",
+    "sc2.actor.read",
+    "sc2.trigger.inspect",
+    "sc2.galaxy.read",
+    "sc2.galaxy.validate",
+    "sc2.test.collect_logs",
+    "sc2.unit.modify",
+    "sc2.weapon.modify",
+    "sc2.effect.modify",
+    "sc2.upgrade.modify",
+    "sc2.actor.modify",
+    "sc2.trigger.modify",
+    "sc2.galaxy.patch",
+    "sc2.package",
+)
+
 
 @dataclass(frozen=True, slots=True)
 class Sc2Execution:
@@ -108,9 +135,11 @@ class LocalSc2Backend:
             ready=True,
             details={
                 "backend": "structured_directory_and_zip",
+                "implemented_actions": list(SC2_IMPLEMENTED_ACTIONS),
                 "project_tools_available": True,
                 "game_or_editor_automation": False,
                 "control_enabled": True,
+                "live_runtime_enabled": False,
                 "workspace_root": str(self.workspace_root),
                 "artifact_root": str(self.artifact_root),
                 "gui_fallback": "disabled_until_audited",
@@ -192,11 +221,21 @@ class LocalSc2Backend:
         source = self._resolve_project(value, must_exist=True)
         if source.is_dir():
             files = self._files(source)
-            data = {"project": self._relative(source), "kind": "directory", "files": files}
+            data = {
+                "project": self._relative(source),
+                "kind": "directory",
+                "files": files,
+                "index": self._build_index(source),
+            }
         else:
             with zipfile.ZipFile(source) as archive:
                 names = [name for name in archive.namelist() if not name.endswith("/")]
-            data = {"project": self._relative(source), "kind": "archive", "files": names}
+            data = {
+                "project": self._relative(source),
+                "kind": "archive",
+                "files": names,
+                "index": self._build_index(source),
+            }
         return Sc2Execution(True, f"Inspected SC2 project {self._relative(source)}.", data=data)
 
     def _snapshot(self, value: object, parameters: Mapping[str, object]) -> Sc2Execution:
@@ -206,6 +245,7 @@ class LocalSc2Backend:
             destination = self.artifact_root / "sc2" / f"{source.stem}-snapshot-{uuid4().hex[:8]}"
         else:
             destination = self._resolve_path(destination_value)
+        self._require_artifact_path(destination, "SC2 working copy")
         if destination == source or source in destination.parents:
             raise ValueError("SC2 snapshot destination must not contain the source")
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -230,6 +270,7 @@ class LocalSc2Backend:
         destination = self._resolve_path(
             parameters.get("destination") or (self.artifact_root / "sc2" / source.stem)
         )
+        self._require_artifact_path(destination, "SC2 unpack destination")
         if destination.exists():
             raise ValueError("SC2 unpack destination already exists")
         destination.mkdir(parents=True, exist_ok=True)
@@ -256,6 +297,7 @@ class LocalSc2Backend:
         destination = self._resolve_path(
             parameters.get("destination") or (self.artifact_root / "sc2" / f"{source.name}.SC2Mod")
         )
+        self._require_artifact_path(destination, "SC2 package artifact")
         if destination == source or source in destination.parents:
             raise ValueError("SC2 package destination must not be inside the source project")
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -348,6 +390,7 @@ class LocalSc2Backend:
                             "tag": element.tag,
                             "attributes": dict(element.attrib),
                             "text": (element.text or "").strip(),
+                            "children": self._children(element),
                         }
                     )
         return Sc2Execution(
@@ -380,10 +423,58 @@ class LocalSc2Backend:
             error=None if not findings else "sc2_validation_failed",
         )
 
+    def _build_index(self, project: Path) -> list[dict[str, object]]:
+        """Build a conservative entity/field/reference index for inspection."""
+
+        index: list[dict[str, object]] = []
+        for relative, content in self._iter_files(project):
+            if not relative.casefold().endswith(".xml"):
+                continue
+            try:
+                root = ElementTree.fromstring(content)
+            except ElementTree.ParseError:
+                continue
+            for element in root.iter():
+                identifier = element.attrib.get("id") or element.attrib.get("name")
+                if not identifier:
+                    continue
+                references = sorted(
+                    {
+                        value
+                        for key, value in element.attrib.items()
+                        if key not in {"id", "name"}
+                        and not value.replace(".", "", 1).isdigit()
+                        and value.strip()
+                    }
+                )
+                index.append(
+                    {
+                        "id": identifier,
+                        "tag": element.tag,
+                        "file": relative,
+                        "fields": self._children(element),
+                        "dependencies": references,
+                    }
+                )
+        return index
+
+    @classmethod
+    def _children(cls, element: ElementTree.Element) -> list[dict[str, object]]:
+        return [
+            {
+                "tag": child.tag,
+                "attributes": dict(child.attrib),
+                "text": (child.text or "").strip(),
+                "children": cls._children(child),
+            }
+            for child in element
+        ]
+
     def _modify(self, value: object, parameters: Mapping[str, object]) -> Sc2Execution:
         project = self._resolve_project(value, must_exist=True)
         if not project.is_dir():
             raise ValueError("SC2 modifications require an unpacked working-copy directory")
+        self._require_artifact_path(project, "SC2 mutation target")
         relative_file = parameters.get("file")
         search = parameters.get("search")
         replacement = parameters.get("replace", "")
@@ -455,6 +546,12 @@ class LocalSc2Backend:
     def _relative(self, path: Path) -> str:
         return path.relative_to(self.workspace_root).as_posix()
 
+    def _require_artifact_path(self, path: Path, label: str) -> None:
+        try:
+            path.resolve(strict=False).relative_to(self.artifact_root)
+        except ValueError as exc:
+            raise ValueError(f"{label} must remain inside the managed artifact root") from exc
+
     def _files(self, root: Path) -> list[dict[str, object]]:
         return [
             {"path": self._relative(file), "size": file.stat().st_size}
@@ -489,7 +586,7 @@ class Sc2Integration(SkeletonIntegration):
     """Central-permission adapter for structured SC2 project operations."""
 
     provider_name = "sc2"
-    _capabilities = SC2_ACTIONS
+    _capabilities = SC2_IMPLEMENTED_ACTIONS
 
     def __init__(
         self,

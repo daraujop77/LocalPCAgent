@@ -2,7 +2,7 @@
 
 This repository is the persistent handoff point for the local-first Personal AI Platform described in [`MasterPlan/MasterPlan.md`](MasterPlan/MasterPlan.md).
 
-The repository now contains the bounded implementation through M13 — Skill Learning foundations. The Python runtime remains dependency-light on the Windows host. Codex handoffs, Blender/SC2 mutations, and destructive PC actions use centrally configured, scoped, expiring, one-time approvals. The main process remains non-administrator and the privileged-helper boundary fails closed. Live Blender/SC2 application validation is environment-dependent; GUI automation and game/editor launching remain disabled.
+The repository now contains the bounded implementation through M14 — Web Gateway foundations. The Python runtime remains dependency-light on the Windows host. Codex handoffs, Blender/SC2 mutations, and destructive PC actions use centrally configured, scoped, expiring, one-time approvals. The main process remains non-administrator and the privileged-helper boundary fails closed. Live Blender/SC2 application validation is environment-dependent; GUI automation and game/editor launching remain disabled.
 
 ## Quick start on Windows
 
@@ -75,11 +75,13 @@ Run the opt-in Notepad acceptance only when the local gateway is running and GUI
 
 Environment overrides use the `PERSONAL_AI_` prefix. Supported values include `HOST`, `PORT`, `ENVIRONMENT`, `LOG_LEVEL`, `ALLOW_REMOTE`, the Qwen and Codex settings, `PERMISSION_POLICY_PATH`, the PC settings, `BLENDER_EXECUTABLE`, `BLENDER_COMMAND_TIMEOUT_SECONDS`, `SC2_WORKSPACE_ROOT`, `ARTIFACT_ROOT`, `MEMORY_ROOT`, and `WORKFLOW_STORAGE_ROOT`. Tool levels and allowlists live in the validated permission policy, not environment variables. Remote binding is disabled by default.
 
-## M5-M13 local workflows
+## M5-M14 local workflows
 
 The gateway exposes structured Blender and SC2 provider boundaries at `/api/v1/blender/invoke` and `/api/v1/sc2/invoke`. Blender uses background CLI execution when `PERSONAL_AI_BLENDER_EXECUTABLE` is available and supports JSON scene fixtures for deterministic development. SC2 works with bounded project directories and ZIP-compatible working copies. Both integrations preserve sources and require central approval for mutations.
 
-Durable workflow runs are available through `/api/v1/workflows`, `/api/v1/runs`, and the run control endpoints. Checkpoints and event history are stored under `artifacts/workflows/`. Semantic, episodic, and procedural memory is stored under `memory/`; skill candidates require repeated validation and explicit promotion.
+Durable workflow runs are available through `/api/v1/workflows`, `/api/v1/runs`, and the run control endpoints. Checkpoints and event history are stored under `artifacts/workflows/`; run event replay is also available as an SSE stream at `/api/v1/runs/{id}/events/stream`. Artifact metadata and downloads are exposed beneath `/api/v1/artifacts` and remain bounded to the configured artifact root. Semantic, episodic, and procedural memory is stored under `memory/`; repeated successful procedures can create unpromoted candidate skills, while explicit validation and promotion remain required.
+
+When `PERSONAL_AI_API_TOKEN` is set, the HTTP adapter requires a bearer token. Remote binding refuses to start without one. Browser origins must be listed in `PERSONAL_AI_ALLOWED_ORIGINS`, and browser write requests must include `X-Personal-AI-CSRF` matching the configured token. Keep the default loopback binding for local development.
 
 ## Handoff documents
 
@@ -92,4 +94,4 @@ Future agents should read these files before making changes:
 - [`TOOL_CONTRACTS.md`](TOOL_CONTRACTS.md) — structured contracts and safety boundaries;
 - [`ROADMAP.md`](ROADMAP.md) — milestone status.
 
-Future agents should continue with the bounded M5 tasks in `NEXT.md`; do not begin M5 without explicit instruction.
+Future agents should read the handoff documents and continue with the bounded next task in `NEXT.md`; do not assume live Blender, SC2 runtime, or LangGraph execution is available.

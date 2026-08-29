@@ -10,6 +10,7 @@ from uuid import uuid4
 
 from personal_ai.chat import ChatMessage, ChatRequest
 from personal_ai.contracts import CodexHandoffResult, CodingTask, HealthStatus
+from personal_ai.memory import MemoryService
 from personal_ai.qwen import ModelBackendError, ModelClient
 from personal_ai.router import ModelRouter, ModelSelection
 
@@ -63,11 +64,12 @@ class ChatResponse:
 
 @dataclass(slots=True)
 class HermesService:
-    """One-turn Hermes service; durable memory belongs to later milestones."""
+    """Hermes conversational boundary with bounded episodic context."""
 
     model_client: ModelClient
     router: ModelRouter
     codex: CodexDelegator | None = None
+    memory: MemoryService | None = None
 
     def health(self) -> HealthStatus:
         backend = self.model_client.health()
@@ -79,7 +81,9 @@ class HermesService:
                 "agent": "hermes",
                 "model_route": self.model_client.route_name,
                 "backend": backend.to_dict(),
-                "conversation_memory": "request_only",
+                "conversation_memory": (
+                    "request_plus_episodic_context" if self.memory is not None else "request_only"
+                ),
             },
         )
 
@@ -122,7 +126,9 @@ class HermesService:
             )
 
         try:
-            reply = self.model_client.complete(request.messages(), request_id=request_id)
+            reply = self.model_client.complete(
+                self._messages_with_memory(request), request_id=request_id
+            )
         except ModelBackendError as exc:
             logger.info(
                 "model_failed",
@@ -212,3 +218,22 @@ class HermesService:
     @staticmethod
     def _latency_ms(started: float) -> int:
         return max(0, int((perf_counter() - started) * 1000))
+
+    def _messages_with_memory(self, request: ChatRequest) -> tuple[ChatMessage, ...]:
+        messages = list(request.messages())
+        if self.memory is None:
+            return tuple(messages)
+        episodes = self.memory.episodes.search(request.message, limit=5)
+        if not episodes:
+            return tuple(messages)
+        context = ["Relevant recorded project history (use only as context):"]
+        for episode in episodes:
+            outcome = "success" if episode.success else "failure"
+            context.append(
+                f"- [{outcome}] {episode.workflow}: {episode.task}. "
+                f"{episode.summary} Errors: {', '.join(episode.errors) or 'none'}."
+            )
+        memory_message = ChatMessage(role="system", content="\n".join(context))
+        insert_at = 1 if messages and messages[0].role == "system" else 0
+        messages.insert(insert_at, memory_message)
+        return tuple(messages)

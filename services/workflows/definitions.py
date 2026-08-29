@@ -11,7 +11,13 @@ from services.workflows.service import WorkflowDefinition, WorkflowNode, Workflo
 
 
 def blender_workflow(provider: Any, memory: MemoryService) -> WorkflowDefinition:
-    """Build the snapshot -> inspect -> modify -> validate -> preview graph."""
+    """Build a bounded snapshot -> plan -> modify -> evaluate graph.
+
+    A mutation request must provide explicit structured operations. An
+    inspection-only run is available only when the caller opts into it; this
+    prevents an empty operation list from being reported as an autonomous
+    scene modification.
+    """
 
     def snapshot(state: dict[str, Any]) -> Mapping[str, object]:
         result = provider.invoke(
@@ -28,10 +34,27 @@ def blender_workflow(provider: Any, memory: MemoryService) -> WorkflowDefinition
         _raise_for_result(result)
         return {"scene": dict(result.data)}
 
+    def plan(state: dict[str, Any]) -> Mapping[str, object]:
+        operations = state.get("operations", [])
+        if not isinstance(operations, list):
+            raise ValueError("Blender workflow operations must be an array")
+        if not operations and not state.get("allow_inspection_only", False):
+            raise ValueError(
+                "Blender autonomous workflow requires explicit operations; "
+                "set allow_inspection_only for a read-only fixture run"
+            )
+        return {
+            "change_plan": {
+                "task": str(state.get("task", "Blender workflow")),
+                "operations": operations,
+                "mode": "inspection_only" if not operations else "controlled_mutation",
+            }
+        }
+
     def modify(state: dict[str, Any]) -> Mapping[str, object]:
         operations = state.get("operations", [])
         if not operations:
-            return {"modification_skipped": True}
+            return {"modification_skipped": True, "modification_mode": "inspection_only"}
         result = provider.invoke(
             "blender.execute_bpy",
             target=_required(state, "working_path"),
@@ -54,33 +77,91 @@ def blender_workflow(provider: Any, memory: MemoryService) -> WorkflowDefinition
         _raise_for_result(result)
         return {"artifacts": _append(state, "artifacts", result.artifacts)}
 
+    def evaluate(state: dict[str, Any]) -> Mapping[str, object]:
+        artifacts = [str(item) for item in state.get("artifacts", [])]
+        if not artifacts:
+            raise ValueError("Blender preview did not produce an artifact")
+        return {
+            "evaluation": {
+                "passed": True,
+                "preview_artifacts": artifacts,
+                "revision_required": False,
+            }
+        }
+
+    def revise(state: dict[str, Any]) -> Mapping[str, object]:
+        revision_operations = state.get("revision_operations", [])
+        if revision_operations:
+            if not isinstance(revision_operations, list):
+                raise ValueError("revision_operations must be an array")
+            result = provider.invoke(
+                "blender.execute_bpy",
+                target=_required(state, "working_path"),
+                parameters={
+                    "operations": revision_operations,
+                    "approval_id": state.get("revision_approval_id", state.get("approval_id")),
+                },
+            )
+            _raise_for_result(result)
+            return {
+                "changed_files": _append(state, "changed_files", result.changed_files),
+                "revision_applied": True,
+            }
+        return {"revision_applied": False}
+
+    def finalize(state: dict[str, Any]) -> Mapping[str, object]:
+        return {
+            "finalized": True,
+            "finalization": {
+                "working_path": state.get("working_path"),
+                "preserved_source": state.get("source"),
+            },
+        }
+
     def record(state: dict[str, Any]) -> Mapping[str, object]:
-        episode = memory.episodes.record(
+        episode = memory.record_episode(
             run_id=str(state.get("run_id", "workflow")),
             workflow="blender.autonomous",
             task=str(state.get("task", "Blender workflow")),
             success=True,
-            summary="Blender snapshot, inspection, modification, validation, and preview completed.",
+            summary="Blender snapshot, plan, controlled modification, validation, preview, evaluation, and finalization completed.",
             inputs={"source": state.get("source"), "operations": state.get("operations", [])},
             outputs={
                 "working_path": state.get("working_path"),
                 "artifacts": state.get("artifacts", []),
+                "change_plan": state.get("change_plan", {}),
+                "evaluation": state.get("evaluation", {}),
             },
             artifacts=state.get("artifacts", []),
+            procedure=(
+                "snapshot_source",
+                "inspect_scene",
+                "plan_changes",
+                "modify_scene",
+                "validate_scene",
+                "render_preview",
+                "evaluate_preview",
+                "revise_scene",
+                "finalize_working_copy",
+            ),
         )
         return {"episode_id": episode.episode_id}
 
     return WorkflowDefinition(
         name="blender.autonomous",
-        description="Preserve a Blender source, inspect, apply controlled operations, validate, and render a preview.",
+        description="Preserve a Blender source, plan explicit operations, validate, evaluate a preview, and finalize a working copy.",
         nodes=tuple(
             WorkflowNode(name, handler)
             for name, handler in (
                 ("snapshot_source", snapshot),
                 ("inspect_scene", inspect),
+                ("plan_changes", plan),
                 ("modify_scene", modify),
                 ("validate_scene", validate),
                 ("render_preview", preview),
+                ("evaluate_preview", evaluate),
+                ("revise_scene", revise),
+                ("finalize_working_copy", finalize),
                 ("record_experience", record),
             )
         ),
@@ -138,7 +219,7 @@ def sc2_workflow(provider: Any, memory: MemoryService) -> WorkflowDefinition:
         return {"artifacts": _append(state, "artifacts", result.artifacts)}
 
     def record(state: dict[str, Any]) -> Mapping[str, object]:
-        episode = memory.episodes.record(
+        episode = memory.record_episode(
             run_id=str(state.get("run_id", "workflow")),
             workflow="sc2.modification",
             task=str(state.get("task", "SC2 workflow")),
@@ -150,6 +231,13 @@ def sc2_workflow(provider: Any, memory: MemoryService) -> WorkflowDefinition:
                 "artifacts": state.get("artifacts", []),
             },
             artifacts=state.get("artifacts", []),
+            procedure=(
+                "snapshot_project",
+                "index_project",
+                "patch_working_copy",
+                "static_validation",
+                "package_version",
+            ),
         )
         return {"episode_id": episode.episode_id}
 

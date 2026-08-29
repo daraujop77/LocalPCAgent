@@ -1,6 +1,6 @@
 # Tool contracts
 
-This file is the stable M5-M13 contract for gateway clients and future agents. All mutation-capable providers must use the central permission service before invoking a backend.
+This file is the stable M5-M14 contract for gateway clients and future agents. All mutation-capable providers must use the central permission service before invoking a backend.
 
 ## Common tool result
 
@@ -106,7 +106,7 @@ An explicit approval request body is:
 }
 ~~~
 
-A decision body optionally contains `decided_by` and `reason`. There is no authentication or durable identity in M5-M13; keep the API on loopback.
+A decision body optionally contains `decided_by` and `reason`. M5-M13 approval records remain process-local; M14 adds optional bearer authentication at the HTTP edge, but there is still no durable identity. Keep the default binding on loopback.
 
 ## Codex repository handoff
 
@@ -166,7 +166,7 @@ PowerShell values are safely quoted and path arguments are resolved under `PERSO
 }
 ~~~
 
-Read-only scene inspection accepts `.blend` files when a Blender executable is configured and JSON scene fixtures for deterministic tests. Mutating operations require a working-copy target and level-2 approval. `blender.execute_bpy` accepts an `operations` array with allowlisted operation names (`transform`, `material_color`, `camera_configure`, `set_render_engine`); arbitrary Python source is rejected. `blender.save_copy` and render operations report relative artifact paths.
+Read-only scene inspection accepts `.blend` files when a Blender executable is configured and JSON scene fixtures for deterministic tests. Mutating operations require a target below the configured artifact root and level-2 approval. `blender.execute_bpy` accepts an `operations` array with allowlisted operation names (`transform`, `material_create`, `material_color`, `camera_configure`, `set_render_engine`); arbitrary Python source is rejected. `blender.save_copy` and render operations report relative artifact paths. Future policy action names that return `not_implemented` are not advertised by capability discovery.
 
 ## SC2 invocation
 
@@ -183,13 +183,21 @@ Read-only scene inspection accepts `.blend` files when a Blender executable is c
 }
 ~~~
 
-SC2 reads operate on bounded directories or ZIP-compatible `.SC2Map`/`.SC2Mod` files. Snapshot, patch, validation, and package results identify working copies and artifacts. Editor/game launch returns `sc2_runtime_unavailable` until an audited adapter is installed.
+SC2 reads operate on bounded directories or ZIP-compatible `.SC2Map`/`.SC2Mod` files. Snapshot, patch, validation, and package results identify working copies and artifacts; mutation targets and generated outputs must remain below the configured artifact root. Inspection includes a conservative XML entity/field index and dependency-like references. Editor/game launch returns `sc2_runtime_unavailable` until an audited adapter is installed.
 
 ## Durable workflow and memory boundaries
 
-`POST /api/v1/workflows` accepts `workflow`, optional `task`, JSON-compatible `state`, and `background`. Standard definitions are `blender.autonomous` and `sc2.modification`. Each run exposes `run_id`, `workflow`, `status`, `state`, `plan`, `current_step`, `artifacts`, `changed_files`, `warnings`, `errors`, `approval_required`, `approval_status`, `iteration`, `tool_history`, and timestamps. Lifecycle events are stored as JSONL under `artifacts/workflows/`. Run controls are explicit and do not grant tool approval. A resume body may provide a state patch such as an accepted `approval_id`.
+`POST /api/v1/workflows` accepts `workflow`, optional `task`, JSON-compatible `state`, and `background`. Standard definitions are `blender.autonomous` and `sc2.modification`. Each run exposes `run_id`, `workflow`, `status`, `state`, `plan`, `current_step`, `artifacts`, `changed_files`, `warnings`, `errors`, `approval_required`, `approval_status`, `iteration`, `tool_history`, and timestamps. Lifecycle events are stored as JSONL under `artifacts/workflows/`; interrupted runs are recovered after startup definitions are registered. Run controls are explicit and do not grant tool approval. A resume body may provide a state patch such as an accepted `approval_id`.
 
-Episodic records capture successful and failed runs. Semantic records are keyed facts. Procedural skill candidates retain source episode IDs and validation provenance; repeated validation plus an explicit promotion call is required before a candidate becomes the active version.
+Episodic records capture successful and failed runs. Semantic records are keyed facts. Hermes adds bounded matching episode context to chat requests. Procedural skill candidates retain source episode IDs and validation provenance; repeated successful procedures may create a candidate, but repeated validation plus an explicit promotion call is required before a candidate becomes the active version.
+
+## M14 web edge
+
+The development server binds to loopback unless remote binding is explicitly enabled. When `PERSONAL_AI_API_TOKEN` is set, API requests require `Authorization: Bearer <token>`. Remote binding refuses to start without a token. Browser requests must use an origin listed in `PERSONAL_AI_ALLOWED_ORIGINS`; browser `POST` requests additionally require `X-Personal-AI-CSRF` equal to the configured token. CORS is never wildcarded.
+
+`GET /api/v1/runs/{id}/events` supports `after=<event_id>`, `event_type`, `limit`, and returns pagination metadata. `GET /api/v1/runs/{id}/events/stream` returns replayable `text/event-stream` frames and accepts `Last-Event-ID` for reconnects.
+
+`GET /api/v1/artifacts` returns bounded metadata with `artifact_id`, `path`, `name`, `content_type`, `size`, and run/workflow provenance. `GET /api/v1/artifacts/{artifact_id}` downloads only files below the configured artifact root; workflow-internal checkpoint/event files are not downloadable. Runs, approvals, approval events, memory episodes, semantic records, and skills support bounded `limit`/`offset` pages and their documented filters.
 
 ## Chat and workflow boundaries
 

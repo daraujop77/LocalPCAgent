@@ -45,6 +45,24 @@ BLENDER_ACTIONS = (
     "blender.capture_viewport",
 )
 
+# Keep future policy action names reserved without advertising them as
+# callable capabilities before they have a backend implementation.
+BLENDER_IMPLEMENTED_ACTIONS = (
+    "blender.status",
+    "blender.open_file",
+    "blender.save_copy",
+    "blender.inspect_scene",
+    "blender.list_objects",
+    "blender.inspect_object",
+    "blender.execute_bpy",
+    "blender.material.create",
+    "blender.material.modify",
+    "blender.object.transform",
+    "blender.camera.configure",
+    "blender.render.preview",
+    "blender.render.final",
+)
+
 
 @dataclass(frozen=True, slots=True)
 class BlenderExecution:
@@ -119,6 +137,7 @@ class LocalBlenderBackend:
             ready=True,
             details={
                 "backend": "headless_cli_and_json_fixture",
+                "implemented_actions": list(BLENDER_IMPLEMENTED_ACTIONS),
                 "executable": self.executable,
                 "blender_available": self.executable is not None,
                 "control_enabled": self.executable is not None,
@@ -267,6 +286,7 @@ class LocalBlenderBackend:
             destination = self._resolve_file(destination_value, must_exist=False)
         if destination == source:
             raise ValueError("Blender working copy must differ from the source")
+        self._require_artifact_path(destination, "working copy")
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, destination)
         relative = self._relative(destination)
@@ -287,6 +307,7 @@ class LocalBlenderBackend:
         source = self._resolve_file(target or parameters.get("working_copy"), must_exist=True)
         if source.suffix.casefold() != ".blend":
             raise ValueError("controlled bpy operations require a .blend working copy")
+        self._require_working_copy(source)
         operations = parameters.get("operations")
         if operations is None:
             operations = [self._operation_for_action(action, parameters)]
@@ -321,6 +342,12 @@ class LocalBlenderBackend:
             "        obj=bpy.data.objects.get(item['object'])\n"
             "        if obj is None or obj.active_material is None: raise ValueError('material not found')\n"
             "        obj.active_material.diffuse_color=(*item['color'], 1.0)\n"
+            "    elif op == 'material_create':\n"
+            "        obj=bpy.data.objects.get(item['object'])\n"
+            "        if obj is None or not hasattr(obj, 'data') or not hasattr(obj.data, 'materials'): raise ValueError('material target not found')\n"
+            "        material=bpy.data.materials.new(name=item.get('name') or (obj.name + 'Material'))\n"
+            "        material.diffuse_color=(*item['color'], 1.0)\n"
+            "        obj.data.materials.append(material)\n"
             "    elif op == 'camera_configure':\n"
             "        camera=bpy.data.objects.get(item['object'])\n"
             "        if camera is None: raise ValueError('camera not found')\n"
@@ -351,6 +378,7 @@ class LocalBlenderBackend:
             if output_value is None
             else self._resolve_file(output_value, must_exist=False)
         )
+        self._require_artifact_path(output, "render output")
         output.parent.mkdir(parents=True, exist_ok=True)
         if source.suffix.casefold() in {".json", ".scene"}:
             output.write_bytes(
@@ -367,6 +395,7 @@ class LocalBlenderBackend:
             )
         if source.suffix.casefold() != ".blend":
             raise ValueError("rendering requires a .blend working copy or JSON fixture")
+        self._require_working_copy(source)
         if self.executable is None:
             return BlenderExecution(
                 success=False,
@@ -398,14 +427,14 @@ class LocalBlenderBackend:
     ) -> Mapping[str, object]:
         mapping = {
             "blender.object.transform": "transform",
-            "blender.material.create": "material_color",
+            "blender.material.create": "material_create",
             "blender.material.modify": "material_color",
             "blender.camera.configure": "camera_configure",
         }
         operation = mapping.get(action)
         if operation is None:
             raise ValueError("execute_bpy requires explicit operations")
-        return {"op": operation, **dict(parameters)}
+        return {**dict(parameters), "op": operation}
 
     @staticmethod
     def _validate_operation(value: object) -> dict[str, object]:
@@ -414,6 +443,7 @@ class LocalBlenderBackend:
         operation = value.get("op")
         if operation not in {
             "transform",
+            "material_create",
             "material_color",
             "camera_configure",
             "set_render_engine",
@@ -434,8 +464,14 @@ class LocalBlenderBackend:
             for field_name in ("location", "rotation_euler", "scale"):
                 if field_name in result and not _vector(result[field_name]):
                     raise ValueError(f"{field_name} must be a numeric three-vector")
-        if operation == "material_color" and not _vector(result.get("color"), maximum=1.0):
+        if operation in {"material_create", "material_color"} and not _vector(
+            result.get("color"), maximum=1.0
+        ):
             raise ValueError("material color must be a numeric three-vector from 0 to 1")
+        if operation == "material_create" and (
+            "name" in result and not isinstance(result["name"], str)
+        ):
+            raise ValueError("material name must be a string")
         return result
 
     def _run(self, args: list[str]) -> subprocess.CompletedProcess[str]:
@@ -469,6 +505,15 @@ class LocalBlenderBackend:
     def _relative(self, path: Path) -> str:
         return path.relative_to(self.workspace_root).as_posix()
 
+    def _require_working_copy(self, path: Path) -> None:
+        self._require_artifact_path(path, "Blender mutation target")
+
+    def _require_artifact_path(self, path: Path, label: str) -> None:
+        try:
+            path.resolve(strict=False).relative_to(self.artifact_root)
+        except ValueError as exc:
+            raise ValueError(f"{label} must remain inside the managed artifact root") from exc
+
     @staticmethod
     def _resolve_executable(executable: str | None) -> str | None:
         if executable:
@@ -490,7 +535,7 @@ class BlenderIntegration(SkeletonIntegration):
     """Central-permission adapter for the Blender backend."""
 
     provider_name = "blender"
-    _capabilities = BLENDER_ACTIONS
+    _capabilities = BLENDER_IMPLEMENTED_ACTIONS
 
     def __init__(
         self,
