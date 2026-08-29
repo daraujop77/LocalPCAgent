@@ -29,7 +29,7 @@ M0 — Foundation (complete for this development cycle).
 
 ## Known limitations
 
-- The project has no configured remote Git origin.
+- The GitHub remote `origin` is configured and the M0 baseline is pushed to `main`.
 - The gateway is a minimal standard-library development server, not a production API server.
 - Workflow state is process-local and empty on restart.
 - The integration capability catalog is descriptive only; it is not an execution API.
@@ -44,5 +44,6 @@ The latest verification was run on 2026-08-29 using Python 3.12.0 on Windows:
 - `.\.venv\Scripts\python.exe -m personal_ai.dev --check`: passed — all five health checks reported ready.
 - `.\.venv\Scripts\python.exe -m personal_ai.dev` plus `GET http://127.0.0.1:8000/health`: passed — HTTP 200 and JSON status `ok`.
 - `.\scripts\check.ps1`: passed — formatting, linting, and 7 tests passed in 0.04s.
+- `git push --set-upstream origin main`: passed — remote `main` is at commit `531b05e`.
 
 The exact combined check command remains available as `.\scripts\check.ps1` after the M0 environment is installed.
