@@ -1,6 +1,6 @@
 # Tool contracts
 
-This file is the stable M4 contract for gateway clients and future agents. All mutation-capable providers must use the central permission service before invoking a backend.
+This file is the stable M5-M13 contract for gateway clients and future agents. All mutation-capable providers must use the central permission service before invoking a backend.
 
 ## Common tool result
 
@@ -10,7 +10,7 @@ This file is the stable M4 contract for gateway clients and future agents. All m
   "tool": "pc.input.type",
   "action": "pc.input.type",
   "target": null,
-  "summary": "pc.input.type was not authorized by the M4 permission policy.",
+  "summary": "pc.input.type was not authorized by the central permission policy.",
   "changed_files": [],
   "artifacts": [],
   "data": {"permission": {}},
@@ -74,6 +74,12 @@ Stable denial errors include `approval_required`, `approval_not_found`, `approva
 | GET/POST | `/api/v1/codex/health`, `/api/v1/codex/handoff` | Codex readiness/handoff |
 | GET | `/api/v1/codex/runs` | Process-local handoff records |
 | GET/POST | `/api/v1/pc/health`, `/api/v1/pc/invoke` | PC readiness/invocation |
+| GET/POST | `/api/v1/blender/invoke` | Headless Blender/fixture operations |
+| GET/POST | `/api/v1/sc2/invoke` | Structured SC2 project operations |
+| GET/POST | `/api/v1/workflows` | List definitions or start a durable workflow run |
+| GET | `/api/v1/runs` | Durable workflow runs |
+| GET/POST | `/api/v1/runs/{id}` and controls | Inspect, pause, resume, retry, cancel, or steer a run |
+| GET | `/api/v1/memory/episodes`, `/api/v1/memory/semantic`, `/api/v1/memory/skills` | Read local memory records |
 | GET | `/api/v1/permissions` | Active validated policy summary |
 | GET/POST | `/api/v1/approvals` | List or explicitly create requests |
 | GET | `/api/v1/approvals/{id}` | Read and refresh one request |
@@ -97,7 +103,7 @@ An explicit approval request body is:
 }
 ~~~
 
-A decision body optionally contains `decided_by` and `reason`. There is no authentication or durable identity in M4; keep the API on loopback.
+A decision body optionally contains `decided_by` and `reason`. There is no authentication or durable identity in M5-M13; keep the API on loopback.
 
 ## Codex repository handoff
 
@@ -147,6 +153,41 @@ PowerShell values are safely quoted and path arguments are resolved under `PERSO
 
 `privileged.system.execute` exists only to prove the boundary. It is level 3, the helper policy is disabled, its action allowlist is empty, and the backend performs no operation. Even an accepted approval returns `privileged_helper_unavailable`. A future implementation must keep central authorization, use an authenticated constrained transport, independently validate arguments, and expose only specific allowlisted operations.
 
+## Blender invocation
+
+~~~json
+{
+  "action": "blender.inspect_scene",
+  "target": "working/scene.blend",
+  "parameters": {}
+}
+~~~
+
+Read-only scene inspection accepts `.blend` files when a Blender executable is configured and JSON scene fixtures for deterministic tests. Mutating operations require a working-copy target and level-2 approval. `blender.execute_bpy` accepts an `operations` array with allowlisted operation names (`transform`, `material_color`, `camera_configure`, `set_render_engine`); arbitrary Python source is rejected. `blender.save_copy` and render operations report relative artifact paths.
+
+## SC2 invocation
+
+~~~json
+{
+  "action": "sc2.galaxy.patch",
+  "target": "artifacts/sc2/my-working-copy",
+  "parameters": {
+    "file": "Map.galaxy",
+    "search": "oldValue",
+    "replace": "newValue",
+    "approval_id": "accepted-id"
+  }
+}
+~~~
+
+SC2 reads operate on bounded directories or ZIP-compatible `.SC2Map`/`.SC2Mod` files. Snapshot, patch, validation, and package results identify working copies and artifacts. Editor/game launch returns `sc2_runtime_unavailable` until an audited adapter is installed.
+
+## Durable workflow and memory boundaries
+
+`POST /api/v1/workflows` accepts `workflow`, optional `task`, JSON-compatible `state`, and `background`. Standard definitions are `blender.autonomous` and `sc2.modification`. Each run exposes `run_id`, `workflow`, `status`, `state`, `plan`, `current_step`, `artifacts`, `changed_files`, `warnings`, `errors`, `approval_required`, `approval_status`, `iteration`, `tool_history`, and timestamps. Lifecycle events are stored as JSONL under `artifacts/workflows/`. Run controls are explicit and do not grant tool approval.
+
+Episodic records capture successful and failed runs. Semantic records are keyed facts. Procedural skill candidates retain source episode IDs and validation provenance; repeated validation plus an explicit promotion call is required before a candidate becomes the active version.
+
 ## Chat and workflow boundaries
 
-`POST /api/v1/chat` retains the M1 request fields `message`, optional `conversation_id`, `task_type`, and `system_prompt`. It routes visibly to configured specialists and falls back to local Qwen where a specialist is unavailable. `WorkflowService` still provides health and an empty process-local run boundary only; LangGraph durability is not implemented.
+`POST /api/v1/chat` retains the M1 request fields `message`, optional `conversation_id`, `task_type`, and `system_prompt`. It routes visibly to configured specialists and falls back to local Qwen where a specialist is unavailable. `WorkflowService` provides durable JSON checkpoints and a graph-compatible state/event boundary; a LangGraph adapter remains optional until migration tests are added.

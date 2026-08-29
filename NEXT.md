@@ -1,18 +1,18 @@
 # Next tasks
 
-M0 through M4 are complete. The next bounded milestone is M5 — Blender Bridge. Do not begin M5 without explicit instruction.
+M5–M13 bounded local implementations are complete. Do not begin M14 without explicit instruction.
 
-1. Inspect the installed Blender version, executable paths, Python environment, and any available Blender MCP server without changing a scene.
-2. Define Blender contracts for scene inspection, controlled `bpy` execution, working-copy creation, preview rendering, saving, and artifact metadata.
-3. Add M5 Blender actions to `policies/permissions.yaml` with read-only inspection automatic and every scene/file mutation centrally approval-gated.
-4. Implement a non-GUI Blender backend using `bpy`, Blender background mode, or MCP; mouse/keyboard automation remains fallback-only.
-5. Create an isolated test `.blend` fixture and always duplicate it before mutation. Never overwrite the source fixture.
-6. Implement the bounded acceptance path: inspect scene, duplicate working file, modify a cube and material, position a camera, render a preview, save the new `.blend`, and report artifacts.
-7. Add deterministic unit tests with a fake backend and an opt-in live Blender acceptance script. Verify permission denial never starts Blender.
-8. Update the handoff documents with exact M5 behavior and limitations, then stop before M6.
+## M14 — Web Gateway
 
-## Deferred validation
+1. Define the authenticated PWA-facing API version and origin/CSRF policy while keeping raw Hermes, Qwen, Blender, SC2, and privileged-helper services private.
+2. Add durable event streaming (SSE initially) from the workflow event store with run-scoped filtering and reconnect support.
+3. Add artifact metadata/download contracts with content-type, size, provenance, and access checks.
+4. Add API pagination and filters for runs, approvals, events, artifacts, memory episodes, and skills.
+5. Add an integration test matrix for the web gateway against loopback and a private-network configuration; keep remote binding disabled by default.
 
-- Run `scripts/pc-acceptance.ps1` only when interactive Notepad control is intentionally desired.
-- A future authenticated UI may make approval decisions; M4's local approval API is not a remote-access authorization system.
-- Durable approvals and audit storage belong with later event/workflow persistence, not M5.
+## Deferred live validation
+
+- Configure a supported Blender executable and run the opt-in headless fixture acceptance against a copied `.blend` file.
+- Validate the SC2 bridge against a real project format; add an audited MPQ/Galaxy tool adapter before enabling editor/game launch.
+- Evaluate an optional LangGraph adapter against the persisted `WorkflowRun` and event contracts; do not replace the stable local runner without migration tests.
+- Add durable authenticated approvals before exposing any approval route beyond loopback/private network.

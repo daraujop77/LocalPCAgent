@@ -151,3 +151,35 @@ Decision: Capture a repository file-content baseline immediately before an appro
 Reason: Git status after execution cannot distinguish a user edit that existed before handoff from a Codex change to the same path. Baseline comparison makes the observable result useful without requiring a clean checkout.
 
 Date: 2026-08-29
+
+## ADR-020 — Keep Blender execution headless and working-copy based
+
+Decision: Implement the Blender provider behind a replaceable backend. JSON scene fixtures support deterministic tests; a configured Blender executable is invoked only in background mode for `.blend` work. Mutations target a copied working file and accept structured allowlisted operations rather than free-form Python. GUI automation remains a fallback and is not enabled.
+
+Reason: The primary Blender interface is `bpy`/MCP, but the main service must remain local, observable, non-admin, and safe from source-file destruction. A backend protocol allows a future audited MCP adapter without changing the gateway contract.
+
+Date: 2026-08-29
+
+## ADR-021 — Treat SC2 projects as structured working copies
+
+Decision: Implement SC2 inspection and modification over bounded directories and ZIP-compatible project fixtures. Reads are automatic; snapshots, packaging, and text modifications use policy levels. XML/Galaxy validation is deterministic and conservative. Galaxy Editor and game launch remain disabled until a real tool is audited.
+
+Reason: Structured project files are the primary interface described by the master plan, while unaudited editor/game automation could expose broad filesystem or process control. The first bridge should be useful without pretending to support every proprietary archive format.
+
+Date: 2026-08-29
+
+## ADR-022 — Persist workflows as graph-compatible JSON checkpoints
+
+Decision: Use explicit named nodes, JSON-compatible state, per-node checkpoints, JSONL lifecycle events, and run controls for pause/resume/retry/cancel/steer. Do not require LangGraph at runtime until an adapter can preserve the stored run and event contracts.
+
+Reason: M7 and M11 need recovery and observability immediately, but a dependency-heavy graph runtime should not become a hidden source of migration breakage. The stable state shape can later be backed by LangGraph or a database.
+
+Date: 2026-08-29
+
+## ADR-023 — Separate experience recording from skill promotion
+
+Decision: Store semantic facts, append-only execution episodes, and versioned procedural skills separately. Candidate procedures retain episode provenance, require repeated explicit validation, and must be explicitly promoted. Failed candidates never replace promoted versions.
+
+Reason: One successful run is not enough evidence for an autonomous skill. Separate stores preserve auditability and make learning reversible and reviewable.
+
+Date: 2026-08-29

@@ -12,8 +12,11 @@ logs/*
 artifacts/*
 !artifacts/.gitkeep
 
+# Durable local memory; schemas and .gitkeep files remain versioned.
+memory/*/*
+!memory/*/.gitkeep
+
 # Local secrets and machine-specific overrides.
 .env
 .env.*
 !.env.example
-

@@ -60,10 +60,8 @@ def test_gateway_exposes_discovery_without_tool_execution() -> None:
     assert "hermes.codex_handoff" in payload["hermes"]["capabilities"]
     assert payload["codex"]["execution"] == "enabled_if_cli_available"
     assert payload["providers"][0]["execution"] == "enabled_controlled_allowlisted"
-    assert all(
-        provider["execution"] == "disabled_until_future_milestone"
-        for provider in payload["providers"][1:]
-    )
+    assert payload["providers"][1]["execution"] == "enabled_structured_project_boundary"
+    assert payload["providers"][2]["execution"] == "enabled_structured_project_boundary"
 
 
 def test_gateway_chat_returns_hermes_response() -> None:

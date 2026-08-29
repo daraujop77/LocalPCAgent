@@ -38,7 +38,7 @@ def _parse_positive_float(value: str, *, name: str) -> float:
 
 @dataclass(frozen=True, slots=True)
 class Settings:
-    """Runtime settings for the development gateway, Codex, and controlled PC host."""
+    """Runtime settings for the local gateway and bounded integration services."""
 
     app_name: str = "personal-ai-platform"
     host: str = "127.0.0.1"
@@ -56,6 +56,12 @@ class Settings:
     permission_policy_path: str = "policies/permissions.yaml"
     pc_workspace_root: str = "."
     pc_command_timeout_seconds: float = 30.0
+    blender_executable: str | None = None
+    blender_command_timeout_seconds: float = 300.0
+    sc2_workspace_root: str = "."
+    artifact_root: str = "artifacts"
+    memory_root: str = "memory"
+    workflow_storage_root: str = "artifacts/workflows"
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None) -> Settings:
@@ -93,5 +99,17 @@ class Settings:
             pc_command_timeout_seconds=_parse_positive_float(
                 values.get("PERSONAL_AI_PC_COMMAND_TIMEOUT_SECONDS", "30"),
                 name="PERSONAL_AI_PC_COMMAND_TIMEOUT_SECONDS",
+            ),
+            blender_executable=values.get("PERSONAL_AI_BLENDER_EXECUTABLE") or None,
+            blender_command_timeout_seconds=_parse_positive_float(
+                values.get("PERSONAL_AI_BLENDER_COMMAND_TIMEOUT_SECONDS", "300"),
+                name="PERSONAL_AI_BLENDER_COMMAND_TIMEOUT_SECONDS",
+            ),
+            sc2_workspace_root=values.get("PERSONAL_AI_SC2_WORKSPACE_ROOT", "."),
+            artifact_root=values.get("PERSONAL_AI_ARTIFACT_ROOT", "artifacts"),
+            memory_root=values.get("PERSONAL_AI_MEMORY_ROOT", "memory"),
+            workflow_storage_root=values.get(
+                "PERSONAL_AI_WORKFLOW_STORAGE_ROOT",
+                "artifacts/workflows",
             ),
         )

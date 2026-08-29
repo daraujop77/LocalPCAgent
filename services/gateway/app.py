@@ -19,6 +19,7 @@ from personal_ai.chat import ChatRequest, ChatValidationError
 from personal_ai.config import Settings
 from personal_ai.contracts import HealthStatus, ToolProvider
 from personal_ai.hermes import HermesService
+from personal_ai.memory import MemoryService
 from personal_ai.permissions import PermissionService, PermissionServiceError
 from personal_ai.qwen import HttpQwenClient, ModelClient
 from personal_ai.router import ModelRouter
@@ -29,6 +30,7 @@ from services.codex.service import (
     coding_task_from_payload,
 )
 from services.privileged_helper.service import PrivilegedHelperService
+from services.workflows.definitions import blender_workflow, sc2_workflow
 from services.workflows.service import WorkflowService
 
 logger = logging.getLogger(__name__)
@@ -44,6 +46,7 @@ class GatewayApp:
     pc: PcIntegration
     permissions: PermissionService
     privileged: PrivilegedHelperService
+    memory: MemoryService | None = None
 
     @classmethod
     def create_default(
@@ -71,15 +74,32 @@ class GatewayApp:
             ModelRouter(),
             codex=codex,
         )
+        blender = BlenderIntegration(
+            permissions,
+            workspace_root=resolved_settings.pc_workspace_root,
+            artifact_root=resolved_settings.artifact_root,
+            executable=resolved_settings.blender_executable,
+            timeout_seconds=resolved_settings.blender_command_timeout_seconds,
+        )
+        sc2 = Sc2Integration(
+            permissions,
+            workspace_root=resolved_settings.sc2_workspace_root,
+            artifact_root=resolved_settings.artifact_root,
+        )
+        memory = MemoryService(resolved_settings.memory_root)
+        workflows = WorkflowService(resolved_settings.workflow_storage_root)
+        workflows.register(blender_workflow(blender, memory))
+        workflows.register(sc2_workflow(sc2, memory))
         return cls(
             settings=resolved_settings,
-            workflows=WorkflowService(),
-            integrations=(pc, BlenderIntegration(), Sc2Integration()),
+            workflows=workflows,
+            integrations=(pc, blender, sc2),
             hermes=hermes,
             codex=codex,
             pc=pc,
             permissions=permissions,
             privileged=privileged,
+            memory=memory,
         )
 
     def _checks(self) -> dict[str, HealthStatus]:
@@ -96,6 +116,8 @@ class GatewayApp:
             "permissions": self.permissions.health(),
             "privileged_helper": self.privileged.health(),
         }
+        if self.memory is not None:
+            checks["memory"] = self.memory.health()
         checks.update({provider.provider_name: provider.health() for provider in self.integrations})
         return checks
 
@@ -138,6 +160,8 @@ class GatewayApp:
                     "execution": (
                         "enabled_controlled_allowlisted"
                         if provider.provider_name == "pc"
+                        else "enabled_structured_project_boundary"
+                        if provider.provider_name in {"blender", "sc2"}
                         else "disabled_until_future_milestone"
                     ),
                 }
@@ -164,6 +188,14 @@ class GatewayApp:
             if method != "POST":
                 return HTTPStatus.METHOD_NOT_ALLOWED, {"error": "method_not_allowed"}
             return self._dispatch_pc(body)
+        if route == "/api/v1/blender/invoke":
+            if method != "POST":
+                return HTTPStatus.METHOD_NOT_ALLOWED, {"error": "method_not_allowed"}
+            return self._dispatch_provider("blender", body)
+        if route == "/api/v1/sc2/invoke":
+            if method != "POST":
+                return HTTPStatus.METHOD_NOT_ALLOWED, {"error": "method_not_allowed"}
+            return self._dispatch_provider("sc2", body)
         if route == "/api/v1/approvals":
             if method == "POST":
                 return self._dispatch_approval_create(body)
@@ -182,6 +214,20 @@ class GatewayApp:
             if method != "POST":
                 return HTTPStatus.METHOD_NOT_ALLOWED, {"error": "method_not_allowed"}
             return self._dispatch_privileged(body)
+        if route == "/api/v1/workflows":
+            if method == "POST":
+                return self._dispatch_workflow_start(body)
+            if method != "GET":
+                return HTTPStatus.METHOD_NOT_ALLOWED, {"error": "method_not_allowed"}
+            return HTTPStatus.OK, {"workflows": self.workflows.definitions()}
+        if route.startswith("/api/v1/runs/"):
+            return self._dispatch_workflow_control(method, route, body)
+        if route == "/api/v1/memory/semantic" and method == "POST":
+            return self._dispatch_memory_semantic(body)
+        if route == "/api/v1/memory/skills" and method == "POST":
+            return self._dispatch_memory_skill(body)
+        if route.startswith("/api/v1/memory/skills/"):
+            return self._dispatch_memory_skill_control(method, route, body)
         if method != "GET":
             return HTTPStatus.METHOD_NOT_ALLOWED, {"error": "method_not_allowed"}
         if route == "/":
@@ -214,6 +260,22 @@ class GatewayApp:
             return status, check.to_dict()
         if route == "/api/v1/runs":
             return HTTPStatus.OK, {"runs": self.workflows.list_runs()}
+        if route == "/api/v1/memory/episodes" and method == "GET":
+            if self.memory is None:
+                return HTTPStatus.NOT_FOUND, {"error": "memory_not_configured"}
+            return HTTPStatus.OK, {
+                "episodes": [item.to_dict() for item in self.memory.episodes.list()]
+            }
+        if route == "/api/v1/memory/semantic" and method == "GET":
+            if self.memory is None:
+                return HTTPStatus.NOT_FOUND, {"error": "memory_not_configured"}
+            return HTTPStatus.OK, {
+                "records": [item.to_dict() for item in self.memory.semantic.list()]
+            }
+        if route == "/api/v1/memory/skills" and method == "GET":
+            if self.memory is None:
+                return HTTPStatus.NOT_FOUND, {"error": "memory_not_configured"}
+            return HTTPStatus.OK, {"skills": [item.to_dict() for item in self.memory.skills.list()]}
         return HTTPStatus.NOT_FOUND, {"error": "not_found", "path": route}
 
     def _dispatch_chat(
@@ -304,6 +366,176 @@ class GatewayApp:
         result = self.pc.invoke(action.strip(), target=target, parameters=parameters)
         status = self._tool_result_status(result.success, result.error)
         return status, result.to_dict()
+
+    def _dispatch_provider(
+        self,
+        provider_name: str,
+        body: bytes | Mapping[str, object] | None,
+    ) -> tuple[int, dict[str, Any]]:
+        try:
+            payload = self._mapping_body(body)
+            action = self._required_string(payload, "action")
+            target = payload.get("target")
+            parameters = payload.get("parameters", {})
+            if target is not None and not isinstance(target, str):
+                raise ValueError("target must be a string when provided")
+            if not isinstance(parameters, Mapping):
+                raise ValueError("parameters must be a JSON object")
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+            return HTTPStatus.BAD_REQUEST, {
+                "success": False,
+                "error": "invalid_request",
+                "details": str(exc),
+            }
+        provider = next(
+            (item for item in self.integrations if item.provider_name == provider_name), None
+        )
+        if provider is None:
+            return HTTPStatus.NOT_FOUND, {"error": "provider_not_found", "provider": provider_name}
+        result = provider.invoke(action, target=target, parameters=parameters)
+        return self._tool_result_status(result.success, result.error), result.to_dict()
+
+    def _dispatch_workflow_start(
+        self,
+        body: bytes | Mapping[str, object] | None,
+    ) -> tuple[int, dict[str, Any]]:
+        try:
+            payload = self._mapping_body(body)
+            workflow = self._required_string(payload, "workflow")
+            state = payload.get("state", {})
+            task = payload.get("task", workflow)
+            background = payload.get("background", True)
+            if (
+                not isinstance(state, Mapping)
+                or not isinstance(task, str)
+                or not isinstance(background, bool)
+            ):
+                raise ValueError("task must be a string, state an object, and background a boolean")
+            run = self.workflows.start(workflow, task=task, state=state, background=background)
+            return HTTPStatus.ACCEPTED if background else HTTPStatus.OK, run.to_dict()
+        except (UnicodeDecodeError, json.JSONDecodeError, KeyError, ValueError) as exc:
+            return HTTPStatus.BAD_REQUEST, {
+                "success": False,
+                "error": "invalid_request",
+                "details": str(exc),
+            }
+
+    def _dispatch_workflow_control(
+        self,
+        method: str,
+        route: str,
+        body: bytes | Mapping[str, object] | None,
+    ) -> tuple[int, dict[str, Any]]:
+        parts = route.removeprefix("/api/v1/runs/").split("/")
+        if len(parts) == 1 and method == "GET":
+            try:
+                return HTTPStatus.OK, self.workflows.get(parts[0]).to_dict()
+            except KeyError as exc:
+                return HTTPStatus.NOT_FOUND, {"error": "run_not_found", "details": str(exc)}
+        if (
+            len(parts) != 2
+            or method != "POST"
+            or parts[1] not in {"pause", "resume", "cancel", "retry", "steer"}
+        ):
+            return HTTPStatus.METHOD_NOT_ALLOWED, {"error": "method_not_allowed"}
+        try:
+            if parts[1] == "pause":
+                run = self.workflows.pause(parts[0])
+            elif parts[1] == "resume":
+                run = self.workflows.resume(parts[0])
+            elif parts[1] == "cancel":
+                run = self.workflows.cancel(parts[0])
+            elif parts[1] == "retry":
+                run = self.workflows.retry(parts[0])
+            else:
+                payload = self._mapping_body(body)
+                instruction = self._required_string(payload, "instruction")
+                run = self.workflows.steer(parts[0], instruction)
+            return HTTPStatus.OK, run.to_dict()
+        except (UnicodeDecodeError, json.JSONDecodeError, KeyError, ValueError) as exc:
+            return HTTPStatus.CONFLICT if isinstance(exc, ValueError) else HTTPStatus.NOT_FOUND, {
+                "success": False,
+                "error": "workflow_control_failed",
+                "details": str(exc),
+            }
+
+    def _dispatch_memory_semantic(
+        self,
+        body: bytes | Mapping[str, object] | None,
+    ) -> tuple[int, dict[str, Any]]:
+        if self.memory is None:
+            return HTTPStatus.NOT_FOUND, {"error": "memory_not_configured"}
+        try:
+            payload = self._mapping_body(body)
+            key = self._required_string(payload, "key")
+            if "value" not in payload:
+                raise ValueError("value is required")
+            source = self._required_string(payload, "source")
+            record = self.memory.semantic.remember(key, payload["value"], source=source)
+            return HTTPStatus.CREATED, record.to_dict()
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+            return HTTPStatus.BAD_REQUEST, {
+                "success": False,
+                "error": "invalid_request",
+                "details": str(exc),
+            }
+
+    def _dispatch_memory_skill(
+        self,
+        body: bytes | Mapping[str, object] | None,
+    ) -> tuple[int, dict[str, Any]]:
+        if self.memory is None:
+            return HTTPStatus.NOT_FOUND, {"error": "memory_not_configured"}
+        try:
+            payload = self._mapping_body(body)
+            name = self._required_string(payload, "name")
+            steps = payload.get("steps")
+            episodes = payload.get("source_episode_ids", [])
+            if not isinstance(steps, list) or not isinstance(episodes, list):
+                raise ValueError("steps and source_episode_ids must be arrays")
+            skill = self.memory.skills.create_candidate(
+                name=name,
+                steps=steps,
+                source_episode_ids=episodes,
+            )
+            return HTTPStatus.CREATED, skill.to_dict()
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+            return HTTPStatus.BAD_REQUEST, {
+                "success": False,
+                "error": "invalid_request",
+                "details": str(exc),
+            }
+
+    def _dispatch_memory_skill_control(
+        self,
+        method: str,
+        route: str,
+        body: bytes | Mapping[str, object] | None,
+    ) -> tuple[int, dict[str, Any]]:
+        if self.memory is None:
+            return HTTPStatus.NOT_FOUND, {"error": "memory_not_configured"}
+        parts = route.removeprefix("/api/v1/memory/skills/").split("/")
+        if len(parts) != 2 or method != "POST" or parts[1] not in {"validate", "promote"}:
+            return HTTPStatus.METHOD_NOT_ALLOWED, {"error": "method_not_allowed"}
+        try:
+            if parts[1] == "promote":
+                skill = self.memory.skills.promote(parts[0])
+            else:
+                payload = self._mapping_body(body)
+                success = payload.get("success")
+                if not isinstance(success, bool):
+                    raise ValueError("success must be a boolean")
+                notes = payload.get("notes", "")
+                if not isinstance(notes, str):
+                    raise ValueError("notes must be a string")
+                skill = self.memory.skills.validate(parts[0], success=success, notes=notes)
+            return HTTPStatus.OK, skill.to_dict()
+        except (UnicodeDecodeError, json.JSONDecodeError, KeyError, ValueError) as exc:
+            return HTTPStatus.CONFLICT, {
+                "success": False,
+                "error": "skill_operation_failed",
+                "details": str(exc),
+            }
 
     def _dispatch_approval_create(
         self,

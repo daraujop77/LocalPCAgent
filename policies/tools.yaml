@@ -6,9 +6,10 @@ execution:
   pc: enabled_controlled_allowlisted
   permissions: enabled_process_local
   privileged_helper: disabled_fail_closed
-  blender: disabled_until_future_milestone
-  sc2: disabled_until_future_milestone
-  workflows: boundary_only
+  blender: enabled_structured_project_boundary
+  sc2: enabled_structured_project_boundary
+  workflows: enabled_durable_json_checkpoints
+  memory: enabled_json_stores
 return_fields:
   - success
   - tool

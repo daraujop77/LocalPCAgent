@@ -2,7 +2,7 @@
 
 ## Scope
 
-This document describes the implementation through M4 — Permission System. The full product intent remains in MasterPlan/MasterPlan.md. M4 centralizes action levels, allowlists, scoped approval requests, audit events, and a fail-closed privileged-helper boundary. It does not include a real elevated helper, LangGraph durability, Blender/SC2 automation, or unrestricted PC control.
+This document describes the implementation through M13 — Skill Learning foundations. The full product intent remains in MasterPlan/MasterPlan.md. M4 centralizes action levels, allowlists, scoped approval requests, audit events, and a fail-closed privileged-helper boundary. M5-M13 add bounded Blender/SC2 project boundaries, durable graph-compatible workflows, and explicit memory/skill promotion. Live game/editor control, remote access, and unrestricted PC control remain disabled.
 
 ## Architectural principles
 
@@ -13,7 +13,7 @@ This document describes the implementation through M4 — Permission System. The
 - Every future tool returns a structured result and declares its approval level.
 - The repository is the persistent handoff mechanism.
 
-## M4 topology
+## M5-M13 topology
 
 ```text
 HTTP client / future PWA
@@ -37,16 +37,18 @@ services/gateway
           |                 v
           |       local Qwen HTTP endpoint
           |
-          +-----------> services/workflows (in-memory boundary)
+          +-----------> services/workflows (durable JSON graph boundary)
           +-----------> services/codex (permission-gated CLI handoff)
           +-----------> integrations/pc (policy-gated Windows control)
           +-----------> services/privileged_helper (disabled, fail closed)
-          +-----------> integrations/{blender,sc2} (safe skeletons)
+          +-----------> integrations/blender (headless CLI + fixture bridge)
+          +-----------> integrations/sc2 (structured directory/ZIP bridge)
+          +-----------> memory (semantic/episodic/procedural JSON stores)
 
 shared contracts/config/logging: src/personal_ai
 ```
 
-The gateway is the composition root for one shared `PermissionService`. Codex, PC, and the privileged-helper boundary consult the same immutable action policy. General chat cannot silently trigger a repository or host mutation. Blender and SC2 invocation attempts remain structured `not_implemented` results.
+The gateway is the composition root for one shared `PermissionService`. Codex, PC, Blender, SC2, and the privileged-helper boundary consult the same immutable action policy. General chat cannot silently trigger a repository or host mutation. Workflow runs use explicit nodes and persisted state; integrations return the common structured result envelope.
 
 ## Repository layout
 
@@ -55,16 +57,17 @@ The top-level structure follows the master plan. The shared Python package lives
 ```text
 apps/web/                         future mobile-friendly PWA boundary
 services/gateway/                 local HTTP gateway
-services/workflows/               future LangGraph boundary
+services/workflows/               durable graph-compatible workflow boundary
 services/events/                  future event-store boundary
 services/privileged-helper/       human-readable privileged boundary documentation
 services/privileged_helper/       importable M4 fail-closed service contract
 integrations/pc/                   controlled Windows host provider and native backend
-integrations/{blender,sc2}/         safe future-application provider skeletons
+integrations/blender/              headless Blender bridge and fixture backend
+integrations/sc2/                  structured SC2 project bridge
 services/codex/                     observable Codex CLI handoff service
 agents/                           future routing/evaluation/specialists
 skills/                           future promoted procedures
-memory/                           future semantic/episodic/procedural stores
+memory/                           JSON semantic/episodic/procedural stores
 policies/                         checked-in model/tool/permission defaults
 src/personal_ai/                  shared Python contracts, config, logging, and model boundary
 tests/                            unit, integration, and future e2e locations
@@ -74,7 +77,7 @@ tests/                            unit, integration, and future e2e locations
 
 ### Gateway
 
-GatewayApp is the composition root. It owns settings, one PermissionService, Hermes, the workflow boundary, Codex handoff, the privileged boundary, and the three integration providers. ThreadingHTTPServer remains the minimal development HTTP adapter. The gateway binds to 127.0.0.1 unless remote binding is explicitly enabled by configuration.
+GatewayApp is the composition root. It owns settings, one PermissionService, Hermes, the workflow service, Codex handoff, the privileged boundary, memory, and the three integration providers. ThreadingHTTPServer remains the minimal development HTTP adapter. The gateway binds to 127.0.0.1 unless remote binding is explicitly enabled by configuration.
 
 ### Hermes and local Qwen
 
@@ -108,13 +111,25 @@ PcIntegration is an execution boundary over NativeWindowsPcControl and no longer
 
 The `scripts/pc-acceptance.ps1` script is intentionally opt-in. It launches an allowlisted Notepad instance, focuses it through the window contract, types known text, saves a working file, reads it back, and closes the window. Automated tests use a fake backend for host operations and never open GUI applications.
 
+### Blender bridge
+
+`BlenderIntegration` uses the central permission service and a replaceable backend. `LocalBlenderBackend` supports JSON scene fixtures for deterministic tests and invokes a configured Blender executable in background mode for `.blend` inspection, controlled `bpy` operations, working-copy changes, and preview/final rendering. Callers provide structured operations; free-form Python is not accepted. Every mutation targets a working copy, and source files are never overwritten.
+
+### SC2 bridge
+
+`Sc2Integration` uses the central permission service and `LocalSc2Backend`. It inspects bounded project directories and ZIP-compatible `.SC2Map`/`.SC2Mod` files, searches text/XML, reads structured records, creates snapshots, patches text in a working copy, validates Galaxy syntax heuristically, and packages versions. Galaxy Editor and game launch are explicit disabled results until an audited executable/tool contract is added.
+
 ### Workflows
 
-WorkflowService is an in-memory health/list boundary only. It is intentionally not a fake LangGraph implementation. Durable state, checkpoints, retries, approvals, and cancellation belong to a later milestone.
+`WorkflowService` is a durable graph-compatible runner. Each named node receives JSON-compatible state, emits lifecycle events, and checkpoints after completion under `artifacts/workflows/`. Runs can pause, resume, retry, cancel, and accept steering instructions. The engine is intentionally independent of the LangGraph import so the later adapter can preserve the persisted run shape and events.
+
+### Memory and learning
+
+`MemoryService` composes a semantic last-write-wins JSON store, append-only episodic JSONL records, and versioned procedural skills. A candidate skill is generated with episode provenance, must pass repeated explicit validation, and is promoted only by an explicit call. A failed candidate never overwrites a promoted version.
 
 ### Integrations
 
-Each provider implements the common ToolProvider contract. PcIntegration is the first executable provider and returns ToolResult for every operation. BlenderIntegration and Sc2Integration retain the safe skeleton boundary until their dedicated milestones.
+Each provider implements the common ToolProvider contract. PC remains the controlled Windows host provider. Blender and SC2 are structured project providers; their mutation actions are centrally approval-gated and their GUI/game fallbacks remain disabled.
 
 ### Permissions and privileged boundary
 
@@ -126,8 +141,8 @@ The M4 approval/event store is thread-safe but process-local. It is intentionall
 
 ### Observability
 
-Logs are emitted as one JSON object per line through the standard library. Permission requests/decisions/consumption also create process-local structured audit events. Health identifies permissions and the disabled privileged boundary alongside gateway, workflows, Hermes/Qwen, Codex, PC, Blender, and SC2.
+Logs are emitted as one JSON object per line through the standard library. Permission requests/decisions/consumption also create process-local structured audit events. Workflow events are persisted as JSONL and run state exposes task, current step, tools, artifacts, changed files, warnings, errors, approval state, and iteration. Health identifies permissions, memory, workflows, Hermes/Qwen, Codex, PC, Blender, SC2, and the disabled privileged boundary.
 
 ## Development contract
 
-The authoritative setup is pyproject.toml plus scripts/setup.ps1. The authoritative checks are scripts/check.ps1. The development gateway starts with scripts/dev.ps1. The optional PC acceptance now exercises the M4 approval API. A live Qwen endpoint is required for chat generation, and the Codex CLI is required only for real handoffs.
+The authoritative setup is pyproject.toml plus scripts/setup.ps1. The authoritative checks are scripts/check.ps1. The development gateway starts with scripts/dev.ps1. The optional PC acceptance exercises the M4 approval API. Blender live work additionally requires a configured Blender executable; SC2 project operations use standard-library parsers and do not require the game/editor. A live Qwen endpoint is required for chat generation, and the Codex CLI is required only for real handoffs.

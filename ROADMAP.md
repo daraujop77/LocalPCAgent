@@ -1,6 +1,6 @@
 # Roadmap
 
-Status is intentionally conservative. M0 through M4 are complete. Later milestones remain planned.
+Status is intentionally conservative. M0 through M13 have bounded local implementations; live application validation and later product surfaces remain planned.
 
 | Milestone | Status | Scope |
 | --- | --- | --- |
@@ -9,15 +9,15 @@ Status is intentionally conservative. M0 through M4 are complete. Later mileston
 | M2 — Codex Integration | Complete | Approved observable Codex CLI handoff, working-tree observation, and post-handoff tests |
 | M3 — PC Control | Complete | Allowlisted Windows app/filesystem/process/window/screenshot/input operations |
 | M4 — Permission System | Complete | Central levels, scoped one-time approvals, validated allowlists, fail-closed privileged-helper boundary |
-| M5 — Blender Bridge | Planned | bpy/MCP inspection, working copies, preview render, artifacts |
-| M6 — Blender Autonomous Workflow | Planned | Snapshot, plan, modify, validate, render, evaluate, finalize |
-| M7 — Durable Blender Workflow | Planned | LangGraph checkpoints, retry, recovery, pause/resume/cancel |
-| M8 — SC2 Inspection | Planned | Safe project snapshot, parser/indexer, search, read-only data inspection |
-| M9 — SC2 Modification | Planned | Working-copy structured modifications and validation |
-| M10 — SC2 Test Loop | Planned | Patch, validate, launch, collect results, diagnose |
-| M11 — Durable SC2 Workflow | Planned | Durability, checkpoints, retries, approvals, artifacts, version history |
-| M12 — Experience Memory | Planned | Successful and failed execution episodes |
-| M13 — Skill Learning | Planned | Candidate procedures, validation, promotion, versioning |
+| M5 — Blender Bridge | Implemented (bounded) | Headless CLI/JSON fixture inspection, working copies, controlled bpy boundary, preview artifacts |
+| M6 — Blender Autonomous Workflow | Implemented (bounded) | Snapshot, inspect, modify, validate, preview, and experience-recording graph |
+| M7 — Durable Blender Workflow | Implemented (graph-compatible) | JSON checkpoints, events, retry, recovery, pause/resume/cancel |
+| M8 — SC2 Inspection | Implemented (structured) | Safe project snapshot, directory/ZIP inspection, search, XML/Galaxy reads |
+| M9 — SC2 Modification | Implemented (working-copy) | Approval-gated structured text patching and validation |
+| M10 — SC2 Test Loop | Implemented (static) | Patch, validate, package, and structured result collection; game launch remains disabled |
+| M11 — Durable SC2 Workflow | Implemented (graph-compatible) | Checkpoints, events, retries, pause/resume/cancel, artifacts, version history |
+| M12 — Experience Memory | Implemented (JSON stores) | Semantic facts and successful/failed execution episodes |
+| M13 — Skill Learning | Implemented (explicit promotion) | Candidate procedures, repeated validation, provenance, versioned promotion |
 | M14 — Web Gateway | Planned | Controlled API for chat, runs, events, approvals, artifacts, status |
 | M15 — Web Chat | Planned | Responsive mobile-compatible chat |
 | M16 — Monitoring Dashboard | Planned | Runs, tools, models, system usage, workflows, artifacts |
@@ -33,3 +33,5 @@ Status is intentionally conservative. M0 through M4 are complete. Later mileston
 - Do not begin serious SC2 work before Blender automation is stable.
 - Do not add multi-agent infrastructure before real workload demonstrates a need.
 - Do not expose raw Hermes, Qwen, Blender MCP, SC2 MCP, or the privileged helper publicly.
+- M5-M13 live Blender rendering requires a configured Blender executable. SC2 `.SC2Map`/`.SC2Mod` support is limited to directories and ZIP-compatible fixtures; MPQ/game/editor execution requires a future audited adapter.
+- The workflow engine persists a stable graph-compatible shape without requiring LangGraph at runtime; a LangGraph adapter can be added without changing the API or stored state contract.

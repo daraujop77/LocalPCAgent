@@ -2,7 +2,7 @@
 
 This repository is the persistent handoff point for the local-first Personal AI Platform described in [`MasterPlan/MasterPlan.md`](MasterPlan/MasterPlan.md).
 
-The repository now contains M0 — Foundation through M4 — Permission System. The Python runtime is intentionally small and dependency-light on the Windows host. Codex handoffs and destructive PC actions use centrally configured, scoped, expiring, one-time approvals. The main process remains non-administrator and the privileged-helper boundary fails closed. LangGraph durability, Blender/SC2 automation, and unrestricted PC control remain future work.
+The repository now contains the bounded implementation through M13 — Skill Learning foundations. The Python runtime remains dependency-light on the Windows host. Codex handoffs, Blender/SC2 mutations, and destructive PC actions use centrally configured, scoped, expiring, one-time approvals. The main process remains non-administrator and the privileged-helper boundary fails closed. Live Blender/SC2 application validation is environment-dependent; GUI automation and game/editor launching remain disabled.
 
 ## Quick start on Windows
 
@@ -67,7 +67,13 @@ Run the opt-in Notepad acceptance only when the local gateway is running and GUI
 .\scripts\pc-acceptance.ps1
 ```
 
-Environment overrides use the `PERSONAL_AI_` prefix. Supported values are `HOST`, `PORT`, `ENVIRONMENT`, `LOG_LEVEL`, `ALLOW_REMOTE`, `QWEN_BASE_URL`, `QWEN_MODEL`, `QWEN_TIMEOUT_SECONDS`, `QWEN_HEALTH_TIMEOUT_SECONDS`, `QWEN_API_KEY`, `CODEX_EXECUTABLE`, `CODEX_TIMEOUT_SECONDS`, `PERMISSION_POLICY_PATH`, `PC_WORKSPACE_ROOT`, and `PC_COMMAND_TIMEOUT_SECONDS`. Tool levels and allowlists live in the validated permission policy, not environment variables. Remote binding is disabled by default.
+Environment overrides use the `PERSONAL_AI_` prefix. Supported values include `HOST`, `PORT`, `ENVIRONMENT`, `LOG_LEVEL`, `ALLOW_REMOTE`, the Qwen and Codex settings, `PERMISSION_POLICY_PATH`, the PC settings, `BLENDER_EXECUTABLE`, `BLENDER_COMMAND_TIMEOUT_SECONDS`, `SC2_WORKSPACE_ROOT`, `ARTIFACT_ROOT`, `MEMORY_ROOT`, and `WORKFLOW_STORAGE_ROOT`. Tool levels and allowlists live in the validated permission policy, not environment variables. Remote binding is disabled by default.
+
+## M5-M13 local workflows
+
+The gateway exposes structured Blender and SC2 provider boundaries at `/api/v1/blender/invoke` and `/api/v1/sc2/invoke`. Blender uses background CLI execution when `PERSONAL_AI_BLENDER_EXECUTABLE` is available and supports JSON scene fixtures for deterministic development. SC2 works with bounded project directories and ZIP-compatible working copies. Both integrations preserve sources and require central approval for mutations.
+
+Durable workflow runs are available through `/api/v1/workflows`, `/api/v1/runs`, and the run control endpoints. Checkpoints and event history are stored under `artifacts/workflows/`. Semantic, episodic, and procedural memory is stored under `memory/`; skill candidates require repeated validation and explicit promotion.
 
 ## Handoff documents
 
