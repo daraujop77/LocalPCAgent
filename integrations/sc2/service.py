@@ -95,6 +95,10 @@ class LocalSc2Backend:
     ) -> None:
         self.workspace_root = Path(workspace_root).expanduser().resolve()
         self.artifact_root = (self.workspace_root / Path(artifact_root)).resolve()
+        try:
+            self.artifact_root.relative_to(self.workspace_root)
+        except ValueError as exc:
+            raise ValueError("SC2 artifacts must remain inside the workspace") from exc
         self.artifact_root.mkdir(parents=True, exist_ok=True)
 
     def health(self) -> HealthStatus:
@@ -226,6 +230,8 @@ class LocalSc2Backend:
         destination = self._resolve_path(
             parameters.get("destination") or (self.artifact_root / "sc2" / source.stem)
         )
+        if destination.exists():
+            raise ValueError("SC2 unpack destination already exists")
         destination.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(source) as archive:
             for member in archive.infolist():

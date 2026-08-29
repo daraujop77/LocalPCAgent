@@ -187,6 +187,15 @@ def _raise_for_result(result: ToolResult) -> None:
         return
     if result.error in {"approval_required", "approval_requested"}:
         raise WorkflowPause(
-            "Workflow is waiting for explicit action approval.", approval_required=True
+            "Workflow is waiting for explicit action approval.",
+            approval_required=True,
+            details={
+                "approval": (
+                    result.data.get("permission", {}).get("approval")
+                    if isinstance(result.data, Mapping)
+                    and isinstance(result.data.get("permission"), Mapping)
+                    else None
+                )
+            },
         )
     raise RuntimeError(result.error or result.summary)

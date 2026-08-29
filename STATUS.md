@@ -47,7 +47,9 @@ Verification was run on Windows with the repository Python 3.12 environment.
 
 - `python -m ruff check .`: passed.
 - `python -m ruff format --check .`: passed.
-- `python -m pytest -q`: passed — 52 tests.
+- `python -m pytest -q`: passed — 57 tests.
+- `scripts/check.ps1`: passed — Ruff formatting/linting and 57 tests.
+- Optional LangGraph extra installed and adapter smoke-tested against `StateGraph`; the gateway still uses the repository-owned persisted checkpoint runner.
 - Permission acceptance coverage proves automatic safe actions, paused destructive actions, lifecycle transitions, expiry, exact scope binding, one-time consumption, legacy-boolean non-bypass, and privileged fail-closed behavior.
 - Gateway integration coverage proves approval acceptance and audited execution for PC/Codex plus the disabled privileged boundary.
 - Live `scripts/pc-acceptance.ps1`: updated to use M4 approval IDs; not run because it intentionally controls Notepad.

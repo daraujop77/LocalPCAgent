@@ -20,6 +20,7 @@ from typing import Any
 from uuid import uuid4
 
 from personal_ai.contracts import HealthStatus
+from personal_ai.memory import MemoryService
 
 logger = logging.getLogger(__name__)
 
@@ -29,10 +30,17 @@ WorkflowHandler = Callable[[dict[str, Any]], Mapping[str, object] | None]
 class WorkflowPause(Exception):
     """Signal that a node needs approval or external input before continuing."""
 
-    def __init__(self, reason: str, *, approval_required: bool = False) -> None:
+    def __init__(
+        self,
+        reason: str,
+        *,
+        approval_required: bool = False,
+        details: Mapping[str, object] | None = None,
+    ) -> None:
         super().__init__(reason)
         self.reason = reason
         self.approval_required = approval_required
+        self.details = dict(details or {})
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,7 +98,12 @@ class WorkflowRun:
 class WorkflowService:
     """Thread-safe durable workflow runner with JSON checkpoints and events."""
 
-    def __init__(self, storage_root: str | Path = "artifacts/workflows") -> None:
+    def __init__(
+        self,
+        storage_root: str | Path = "artifacts/workflows",
+        *,
+        memory: MemoryService | None = None,
+    ) -> None:
         self.storage_root = Path(storage_root)
         self.storage_root.mkdir(parents=True, exist_ok=True)
         self.runs_path = self.storage_root / "runs.json"
@@ -100,6 +113,7 @@ class WorkflowService:
         self._threads: dict[str, threading.Thread] = {}
         self._pause_requested: set[str] = set()
         self._cancel_requested: set[str] = set()
+        self.memory = memory
         self._lock = threading.RLock()
         self._load_runs()
 
@@ -174,13 +188,21 @@ class WorkflowService:
             self._execute(run.run_id, definition)
         return self.get(run.run_id)
 
-    def resume(self, run_id: str, *, background: bool = True) -> WorkflowRun:
+    def resume(
+        self,
+        run_id: str,
+        *,
+        state: Mapping[str, object] | None = None,
+        background: bool = True,
+    ) -> WorkflowRun:
         with self._lock:
             run = self._require(run_id)
             if run.status not in {"paused", "failed", "queued"}:
                 raise ValueError(f"workflow {run_id} cannot resume from {run.status}")
             definition = self._resolve_definition(run.workflow)
             run.status = "queued"
+            if state:
+                run.state.update(_json_copy(dict(state)))
             run.approval_required = False
             run.approval_status = None
             run.iteration += 1
@@ -230,7 +252,10 @@ class WorkflowService:
             raise ValueError("steering instruction must not be empty")
         with self._lock:
             run = self._require(run_id)
-            instructions = list(run.state.get("steering_instructions", []))
+            existing = run.state.get("steering_instructions", [])
+            if not isinstance(existing, list | tuple):
+                raise ValueError("workflow steering state is not an array")
+            instructions = list(existing)
             instructions.append(clean)
             run.state["steering_instructions"] = instructions
             run.updated_at = _now()
@@ -320,6 +345,8 @@ class WorkflowService:
                     run.status = "paused"
                     run.approval_required = exc.approval_required
                     run.approval_status = "required" if exc.approval_required else "waiting"
+                    if exc.details:
+                        run.state["pause_details"] = _json_copy(exc.details)
                     run.warnings = (*run.warnings, exc.reason)
                     run.updated_at = _now()
                     self._persist_run(run)
@@ -338,6 +365,22 @@ class WorkflowService:
                     run.updated_at = _now()
                     self._persist_run(run)
                     self._emit(run, "workflow.node.failed", {"node": node.name, "error": str(exc)})
+                    if self.memory is not None:
+                        self.memory.episodes.record(
+                            run_id=run.run_id,
+                            workflow=run.workflow,
+                            task=run.task,
+                            success=False,
+                            summary=f"Workflow failed at node {node.name}.",
+                            inputs=run.state,
+                            outputs={
+                                "current_step": node.name,
+                                "current_step_index": run.current_step_index,
+                            },
+                            errors=(str(exc),),
+                            warnings=run.warnings,
+                            artifacts=run.artifacts,
+                        )
                 return
 
             with self._lock:

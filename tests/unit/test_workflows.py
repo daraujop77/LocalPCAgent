@@ -1,3 +1,9 @@
+import warnings
+
+import pytest
+
+from personal_ai.memory import MemoryService
+from services.workflows.langgraph_adapter import compile_definition
 from services.workflows.service import (
     WorkflowDefinition,
     WorkflowNode,
@@ -49,3 +55,35 @@ def test_workflow_pause_and_resume_from_checkpoint(tmp_path) -> None:
 
     assert resumed.status == "completed"
     assert calls == ["continued"]
+
+
+def test_workflow_failure_is_recorded_as_an_episode(tmp_path) -> None:
+    memory = MemoryService(tmp_path / "memory")
+
+    def fail(state):
+        del state
+        raise RuntimeError("fixture failure")
+
+    service = WorkflowService(tmp_path / "runs", memory=memory)
+    run = service.start(
+        WorkflowDefinition("failure.workflow", (WorkflowNode("fail", fail),)),
+        background=False,
+    )
+
+    assert run.status == "failed"
+    episodes = memory.episodes.list()
+    assert len(episodes) == 1
+    assert episodes[0].success is False
+
+
+def test_langgraph_adapter_compiles_the_same_explicit_nodes() -> None:
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        pytest.importorskip("langgraph")
+        graph = compile_definition(
+            WorkflowDefinition(
+                "langgraph.fixture", (WorkflowNode("done", lambda state: {"ok": True}),)
+            )
+        )
+
+    assert graph.invoke({})["ok"] is True

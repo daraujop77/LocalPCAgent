@@ -74,12 +74,15 @@ Stable denial errors include `approval_required`, `approval_not_found`, `approva
 | GET/POST | `/api/v1/codex/health`, `/api/v1/codex/handoff` | Codex readiness/handoff |
 | GET | `/api/v1/codex/runs` | Process-local handoff records |
 | GET/POST | `/api/v1/pc/health`, `/api/v1/pc/invoke` | PC readiness/invocation |
-| GET/POST | `/api/v1/blender/invoke` | Headless Blender/fixture operations |
-| GET/POST | `/api/v1/sc2/invoke` | Structured SC2 project operations |
+| GET | `/api/v1/blender/health`, `/api/v1/sc2/health` | Integration readiness |
+| POST | `/api/v1/blender/invoke` | Headless Blender/fixture operations |
+| POST | `/api/v1/sc2/invoke` | Structured SC2 project operations |
 | GET/POST | `/api/v1/workflows` | List definitions or start a durable workflow run |
 | GET | `/api/v1/runs` | Durable workflow runs |
 | GET/POST | `/api/v1/runs/{id}` and controls | Inspect, pause, resume, retry, cancel, or steer a run |
-| GET | `/api/v1/memory/episodes`, `/api/v1/memory/semantic`, `/api/v1/memory/skills` | Read local memory records |
+| GET | `/api/v1/runs/{id}/events` | Persisted workflow lifecycle events |
+| GET/POST | `/api/v1/memory/episodes`, `/api/v1/memory/semantic`, `/api/v1/memory/skills` | Read episodes/facts/skills or create a semantic fact/candidate |
+| POST | `/api/v1/memory/skills/{id}/validate`, `/api/v1/memory/skills/{id}/promote` | Explicitly validate or promote a procedural candidate |
 | GET | `/api/v1/permissions` | Active validated policy summary |
 | GET/POST | `/api/v1/approvals` | List or explicitly create requests |
 | GET | `/api/v1/approvals/{id}` | Read and refresh one request |
@@ -184,7 +187,7 @@ SC2 reads operate on bounded directories or ZIP-compatible `.SC2Map`/`.SC2Mod` f
 
 ## Durable workflow and memory boundaries
 
-`POST /api/v1/workflows` accepts `workflow`, optional `task`, JSON-compatible `state`, and `background`. Standard definitions are `blender.autonomous` and `sc2.modification`. Each run exposes `run_id`, `workflow`, `status`, `state`, `plan`, `current_step`, `artifacts`, `changed_files`, `warnings`, `errors`, `approval_required`, `approval_status`, `iteration`, `tool_history`, and timestamps. Lifecycle events are stored as JSONL under `artifacts/workflows/`. Run controls are explicit and do not grant tool approval.
+`POST /api/v1/workflows` accepts `workflow`, optional `task`, JSON-compatible `state`, and `background`. Standard definitions are `blender.autonomous` and `sc2.modification`. Each run exposes `run_id`, `workflow`, `status`, `state`, `plan`, `current_step`, `artifacts`, `changed_files`, `warnings`, `errors`, `approval_required`, `approval_status`, `iteration`, `tool_history`, and timestamps. Lifecycle events are stored as JSONL under `artifacts/workflows/`. Run controls are explicit and do not grant tool approval. A resume body may provide a state patch such as an accepted `approval_id`.
 
 Episodic records capture successful and failed runs. Semantic records are keyed facts. Procedural skill candidates retain source episode IDs and validation provenance; repeated validation plus an explicit promotion call is required before a candidate becomes the active version.
 

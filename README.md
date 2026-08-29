@@ -16,6 +16,12 @@ py -3.12 -m venv .venv
 .\scripts\dev.ps1
 ```
 
+The durable runner is graph-compatible without requiring LangGraph for the local baseline. Install the optional adapter dependency when evaluating it:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -e ".[dev,workflow]"
+```
+
 The development gateway binds to `127.0.0.1:8000` by default. Check `http://127.0.0.1:8000/health` or use `.\.venv\Scripts\python.exe -m personal_ai.dev --check`. Ollama is the configured local Qwen backend; start it and ensure `qwen3.8:27b` is installed before sending chat requests:
 
 ```powershell

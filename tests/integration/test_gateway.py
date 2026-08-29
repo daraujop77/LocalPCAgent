@@ -10,7 +10,7 @@ from personal_ai.router import ModelRouter
 from services.codex.service import CodexHandoffService
 from services.gateway.app import GatewayApp
 from services.privileged_helper.service import PrivilegedHelperService
-from services.workflows.service import WorkflowService
+from services.workflows.service import WorkflowDefinition, WorkflowNode, WorkflowService
 from tests.support import FakeCodexBackend, FakePcBackend, FakeQwenClient, make_permission_service
 
 
@@ -141,6 +141,40 @@ def test_gateway_pc_route_returns_structured_success() -> None:
     assert payload["success"] is True
     assert payload["tool"] == "pc.system_info"
     assert payload["data"]["action"] == "pc.system_info"
+
+
+def test_gateway_exposes_structured_integrations_and_workflow_controls() -> None:
+    app = make_test_app()
+    status, blender = app.dispatch(
+        "POST",
+        "/api/v1/blender/invoke",
+        {"action": "blender.status", "parameters": {}},
+    )
+    assert status == HTTPStatus.OK
+    assert blender["success"] is True
+    status, health = app.dispatch("GET", "/api/v1/blender/health")
+    assert status == HTTPStatus.OK
+    assert health["name"] == "blender"
+
+    app.workflows.register(
+        WorkflowDefinition(
+            "gateway.fixture",
+            (WorkflowNode("complete", lambda state: {"fixture": state.get("fixture", True)}),),
+        )
+    )
+    status, run = app.dispatch(
+        "POST",
+        "/api/v1/workflows",
+        {"workflow": "gateway.fixture", "background": False},
+    )
+    assert status == HTTPStatus.OK
+    assert run["status"] == "completed"
+    status, fetched = app.dispatch("GET", f"/api/v1/runs/{run['run_id']}")
+    assert status == HTTPStatus.OK
+    assert fetched["state"]["fixture"] is True
+    status, events = app.dispatch("GET", f"/api/v1/runs/{run['run_id']}/events")
+    assert status == HTTPStatus.OK
+    assert events["events"][-1]["event_type"] == "run.completed"
 
 
 def test_gateway_codex_route_returns_observable_handoff(tmp_path) -> None:

@@ -6,6 +6,9 @@ from integrations.blender.service import (
     LocalBlenderBackend,
 )
 from personal_ai.contracts import HealthStatus
+from personal_ai.memory import MemoryService
+from services.workflows.definitions import blender_workflow
+from services.workflows.service import WorkflowService
 from tests.support import make_permission_service
 
 
@@ -51,3 +54,26 @@ def test_blender_mutation_is_centrally_approval_gated() -> None:
     assert pending.success is False
     assert pending.error == "approval_required"
     assert fake.calls == []
+
+
+def test_blender_fixture_workflow_completes_without_gui_or_blender(tmp_path) -> None:
+    source = tmp_path / "scene.json"
+    source.write_text(json.dumps({"objects": [{"name": "Cube"}]}), encoding="utf-8")
+    permissions = make_permission_service()
+    backend = LocalBlenderBackend(
+        workspace_root=tmp_path, artifact_root="artifacts", executable="missing"
+    )
+    provider = BlenderIntegration(permissions, backend=backend)
+    memory = MemoryService(tmp_path / "memory")
+    service = WorkflowService(tmp_path / "runs", memory=memory)
+
+    run = service.start(
+        blender_workflow(provider, memory),
+        state={"source": "scene.json", "task": "fixture workflow"},
+        background=False,
+    )
+
+    assert run.status == "completed"
+    assert run.state["validated"] is True
+    assert any(path.endswith("-preview.png") for path in run.artifacts)
+    assert memory.episodes.list()[0].success is True

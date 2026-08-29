@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "personal-ai-platform"
-version = "0.4.0"
-description = "Local-first personal AI platform through M4 permissions"
+version = "0.13.0"
+description = "Local-first personal AI platform through M13 skill-learning foundations"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = []
@@ -14,6 +14,9 @@ dependencies = []
 dev = [
     "pytest>=8.3,<9",
     "ruff>=0.6,<1",
+]
+workflow = [
+    "langgraph>=0.2,<1",
 ]
 
 [project.scripts]

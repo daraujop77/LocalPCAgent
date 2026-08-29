@@ -7,6 +7,7 @@ fixtures for deterministic development tests.
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import shutil
@@ -103,6 +104,10 @@ class LocalBlenderBackend:
         self.workspace_root = Path(workspace_root).expanduser().resolve()
         artifact_path = Path(artifact_root).expanduser()
         self.artifact_root = (self.workspace_root / artifact_path).resolve()
+        try:
+            self.artifact_root.relative_to(self.workspace_root)
+        except ValueError as exc:
+            raise ValueError("Blender artifacts must remain inside the workspace") from exc
         self.artifact_root.mkdir(parents=True, exist_ok=True)
         self.executable = self._resolve_executable(executable)
         self.timeout_seconds = timeout_seconds
@@ -251,6 +256,8 @@ class LocalBlenderBackend:
 
     def _save_copy(self, target: str | None, parameters: Mapping[str, object]) -> BlenderExecution:
         source = self._resolve_file(target or parameters.get("source"), must_exist=True)
+        if source.suffix.casefold() not in {".blend", ".json", ".scene"}:
+            raise ValueError("Blender working copies are restricted to .blend or scene fixtures")
         destination_value = parameters.get("destination")
         if destination_value is None:
             destination = (
@@ -337,8 +344,6 @@ class LocalBlenderBackend:
         self, action: str, target: str | None, parameters: Mapping[str, object]
     ) -> BlenderExecution:
         source = self._resolve_file(target or parameters.get("working_copy"), must_exist=True)
-        if source.suffix.casefold() != ".blend":
-            raise ValueError("rendering requires a .blend working copy")
         output_value = parameters.get("output")
         suffix = "preview" if action.endswith("preview") else "final"
         output = (
@@ -347,6 +352,21 @@ class LocalBlenderBackend:
             else self._resolve_file(output_value, must_exist=False)
         )
         output.parent.mkdir(parents=True, exist_ok=True)
+        if source.suffix.casefold() in {".json", ".scene"}:
+            output.write_bytes(
+                base64.b64decode(
+                    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+                )
+            )
+            relative = self._relative(output)
+            return BlenderExecution(
+                success=True,
+                summary=f"Rendered deterministic fixture {suffix} output.",
+                artifacts=(relative,),
+                data={"source": self._relative(source), "output": relative, "fixture": True},
+            )
+        if source.suffix.casefold() != ".blend":
+            raise ValueError("rendering requires a .blend working copy or JSON fixture")
         if self.executable is None:
             return BlenderExecution(
                 success=False,
@@ -404,6 +424,18 @@ class LocalBlenderBackend:
             result.get("object"), str
         ):
             raise ValueError("bpy object operations require an object name")
+        if operation == "set_render_engine" and result.get("value") not in {
+            "BLENDER_EEVEE_NEXT",
+            "BLENDER_WORKBENCH",
+            "BLENDER_RENDER",
+        }:
+            raise ValueError("render engine is not allowlisted")
+        if operation in {"transform", "camera_configure"}:
+            for field_name in ("location", "rotation_euler", "scale"):
+                if field_name in result and not _vector(result[field_name]):
+                    raise ValueError(f"{field_name} must be a numeric three-vector")
+        if operation == "material_color" and not _vector(result.get("color"), maximum=1.0):
+            raise ValueError("material color must be a numeric three-vector from 0 to 1")
         return result
 
     def _run(self, args: list[str]) -> subprocess.CompletedProcess[str]:
@@ -444,6 +476,14 @@ class LocalBlenderBackend:
             if path.is_file():
                 return str(path.resolve())
         return shutil.which(executable or "blender")
+
+
+def _vector(value: object, *, maximum: float | None = None) -> bool:
+    if not isinstance(value, (list, tuple)) or len(value) != 3:
+        return False
+    if not all(isinstance(item, (int, float)) and not isinstance(item, bool) for item in value):
+        return False
+    return maximum is None or all(0 <= float(item) <= maximum for item in value)
 
 
 class BlenderIntegration(SkeletonIntegration):

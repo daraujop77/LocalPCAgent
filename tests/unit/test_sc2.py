@@ -1,5 +1,8 @@
 from integrations.sc2.service import LocalSc2Backend, Sc2Execution, Sc2Integration
 from personal_ai.contracts import HealthStatus
+from personal_ai.memory import MemoryService
+from services.workflows.definitions import sc2_workflow
+from services.workflows.service import WorkflowService
 from tests.support import make_permission_service
 
 
@@ -54,3 +57,27 @@ def test_sc2_mutation_is_centrally_approval_gated() -> None:
     assert pending.success is False
     assert pending.error == "approval_required"
     assert fake.calls == []
+
+
+def test_sc2_workflow_creates_validated_packaged_working_version(tmp_path) -> None:
+    project = tmp_path / "mod"
+    project.mkdir()
+    (project / "Map.galaxy").write_text("void main() {}\n", encoding="utf-8")
+    permissions = make_permission_service()
+    provider = Sc2Integration(
+        permissions,
+        backend=LocalSc2Backend(workspace_root=tmp_path, artifact_root="artifacts"),
+    )
+    memory = MemoryService(tmp_path / "memory")
+    service = WorkflowService(tmp_path / "runs", memory=memory)
+
+    run = service.start(
+        sc2_workflow(provider, memory),
+        state={"source": "mod", "task": "package fixture"},
+        background=False,
+    )
+
+    assert run.status == "completed"
+    assert run.state["validated"] is True
+    assert any(path.endswith(".SC2Mod") for path in run.artifacts)
+    assert memory.episodes.list()[0].success is True

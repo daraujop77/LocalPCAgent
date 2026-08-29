@@ -87,7 +87,7 @@ class GatewayApp:
             artifact_root=resolved_settings.artifact_root,
         )
         memory = MemoryService(resolved_settings.memory_root)
-        workflows = WorkflowService(resolved_settings.workflow_storage_root)
+        workflows = WorkflowService(resolved_settings.workflow_storage_root, memory=memory)
         workflows.register(blender_workflow(blender, memory))
         workflows.register(sc2_workflow(sc2, memory))
         return cls(
@@ -196,6 +196,22 @@ class GatewayApp:
             if method != "POST":
                 return HTTPStatus.METHOD_NOT_ALLOWED, {"error": "method_not_allowed"}
             return self._dispatch_provider("sc2", body)
+        if route in {"/api/v1/blender/health", "/api/v1/sc2/health"}:
+            if method != "GET":
+                return HTTPStatus.METHOD_NOT_ALLOWED, {"error": "method_not_allowed"}
+            provider_name = route.split("/")[3]
+            provider = next(
+                (item for item in self.integrations if item.provider_name == provider_name), None
+            )
+            if provider is None:
+                return HTTPStatus.NOT_FOUND, {
+                    "error": "provider_not_found",
+                    "provider": provider_name,
+                }
+            check = provider.health()
+            return (
+                HTTPStatus.OK if check.ready else HTTPStatus.SERVICE_UNAVAILABLE
+            ), check.to_dict()
         if route == "/api/v1/approvals":
             if method == "POST":
                 return self._dispatch_approval_create(body)
@@ -432,6 +448,12 @@ class GatewayApp:
                 return HTTPStatus.OK, self.workflows.get(parts[0]).to_dict()
             except KeyError as exc:
                 return HTTPStatus.NOT_FOUND, {"error": "run_not_found", "details": str(exc)}
+        if len(parts) == 2 and parts[1] == "events" and method == "GET":
+            try:
+                self.workflows.get(parts[0])
+            except KeyError as exc:
+                return HTTPStatus.NOT_FOUND, {"error": "run_not_found", "details": str(exc)}
+            return HTTPStatus.OK, {"events": self.workflows.events(parts[0])}
         if (
             len(parts) != 2
             or method != "POST"
@@ -442,7 +464,11 @@ class GatewayApp:
             if parts[1] == "pause":
                 run = self.workflows.pause(parts[0])
             elif parts[1] == "resume":
-                run = self.workflows.resume(parts[0])
+                payload = self._mapping_body(body, allow_none=True)
+                state = payload.get("state", {})
+                if not isinstance(state, Mapping):
+                    raise ValueError("resume state must be an object")
+                run = self.workflows.resume(parts[0], state=state)
             elif parts[1] == "cancel":
                 run = self.workflows.cancel(parts[0])
             elif parts[1] == "retry":
