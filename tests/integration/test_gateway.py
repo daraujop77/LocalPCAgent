@@ -2,13 +2,16 @@ import json
 import subprocess
 import sys
 from http import HTTPStatus
+from http.client import HTTPConnection
+from http.server import ThreadingHTTPServer
+from threading import Thread
 
 from integrations.pc.service import PcIntegration
 from personal_ai.config import Settings
 from personal_ai.hermes import HermesService
 from personal_ai.router import ModelRouter
 from services.codex.service import CodexHandoffService
-from services.gateway.app import GatewayApp
+from services.gateway.app import GatewayApp, GatewayRequestHandler
 from services.privileged_helper.service import PrivilegedHelperService
 from services.workflows.service import WorkflowDefinition, WorkflowNode, WorkflowService
 from tests.support import FakeCodexBackend, FakePcBackend, FakeQwenClient, make_permission_service
@@ -220,6 +223,48 @@ def test_remote_gateway_requires_bearer_and_csrf_tokens() -> None:
     assert app.authorize_http("POST", "/api/v1/chat", headers)[0] == HTTPStatus.FORBIDDEN
     headers["X-Personal-AI-CSRF"] = "test-token"
     assert app.authorize_http("POST", "/api/v1/chat", headers) is None
+
+
+def test_http_adapter_enforces_auth_and_cors() -> None:
+    app = make_test_app()
+    app.settings = Settings(
+        api_token="test-token",
+        allowed_origins=("https://pwa.example",),
+    )
+    bound_app = app
+
+    class Handler(GatewayRequestHandler):
+        app = bound_app
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    connection = HTTPConnection("127.0.0.1", server.server_address[1], timeout=5)
+    try:
+        connection.request("GET", "/api/v1/tools")
+        denied = connection.getresponse()
+        assert denied.status == HTTPStatus.UNAUTHORIZED
+        denied.read()
+
+        connection.request(
+            "GET",
+            "/api/v1/tools",
+            headers={"Authorization": "Bearer test-token"},
+        )
+        allowed = connection.getresponse()
+        assert allowed.status == HTTPStatus.OK
+        allowed.read()
+
+        connection.request("OPTIONS", "/api/v1/chat", headers={"Origin": "https://pwa.example"})
+        cors = connection.getresponse()
+        assert cors.status == HTTPStatus.NO_CONTENT
+        assert cors.getheader("Access-Control-Allow-Origin") == "https://pwa.example"
+        cors.read()
+    finally:
+        connection.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
 
 
 def test_gateway_codex_route_returns_observable_handoff(tmp_path) -> None:
