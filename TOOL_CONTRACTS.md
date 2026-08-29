@@ -71,7 +71,7 @@ Successful and failed chats use the same structured response shape:
   "conversation_id": "conversation-id",
   "message": {"role": "assistant", "content": "..."},
   "model": "qwen-local",
-  "model_name": "qwen3.5:9b",
+  "model_name": "qwen3.8:27b",
   "routing": {
     "task_type": "general",
     "selected_model": "qwen-local",
@@ -110,7 +110,7 @@ GET /models
 POST /chat/completions
 ~~~
 
-The default is http://127.0.0.1:11434/v1 with model qwen3.5:9b. Configure PERSONAL_AI_QWEN_BASE_URL, PERSONAL_AI_QWEN_MODEL, PERSONAL_AI_QWEN_TIMEOUT_SECONDS, PERSONAL_AI_QWEN_HEALTH_TIMEOUT_SECONDS, and optional PERSONAL_AI_QWEN_API_KEY.
+The default is http://127.0.0.1:11434/v1 with model qwen3.8:27b. Configure PERSONAL_AI_QWEN_BASE_URL, PERSONAL_AI_QWEN_MODEL, PERSONAL_AI_QWEN_TIMEOUT_SECONDS, PERSONAL_AI_QWEN_HEALTH_TIMEOUT_SECONDS, and optional PERSONAL_AI_QWEN_API_KEY.
 
 ## Workflow boundary
 

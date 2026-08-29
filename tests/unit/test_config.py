@@ -9,7 +9,7 @@ def test_settings_have_safe_local_defaults() -> None:
     assert settings.allow_remote is False
     assert settings.environment == "development"
     assert settings.qwen_base_url == "http://127.0.0.1:11434/v1"
-    assert settings.qwen_model == "qwen3.5:9b"
+    assert settings.qwen_model == "qwen3.8:27b"
 
 
 def test_settings_accept_explicit_environment_overrides() -> None:

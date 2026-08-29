@@ -69,9 +69,11 @@ GatewayApp is the composition root. It owns settings, Hermes, the workflow bound
 
 HermesService owns one-turn conversational handling. It validates a minimal chat request, asks ModelRouter for a deterministic selection, logs selection/fallback/outcome, and calls the configured ModelClient. HttpQwenClient uses local OpenAI-compatible GET /models and POST /chat/completions endpoints without a runtime SDK dependency. Conversation history is request-only until a later memory milestone.
 
-The default endpoint is http://127.0.0.1:11434/v1, compatible with Ollama. The default M1 model is qwen3.5:9b because the installed Hermes runtime requires a model context window of at least 64K; qwen3:8b remains available locally but reports a 40K window. The endpoint and model are configurable through PERSONAL_AI_QWEN_BASE_URL and PERSONAL_AI_QWEN_MODEL.
+The default endpoint is http://127.0.0.1:11434/v1, compatible with Ollama. The default M1 model is qwen3.8:27b, which Ollama publishes with a 256K context window and therefore satisfies the installed Hermes runtime's 64K minimum. qwen3:8b and qwen3.5:9b remain installed as optional legacy models on the inspected host. The endpoint and model are configurable through PERSONAL_AI_QWEN_BASE_URL and PERSONAL_AI_QWEN_MODEL.
 
-The upstream Hermes Agent runtime is installed user-scoped under %LOCALAPPDATA%\\hermes (currently C:\\Users\\mrdea\\AppData\\Local\\hermes) and configured independently of this repository. M1 verifies that upstream Hermes can complete a one-shot prompt through Ollama/qwen3.5:9b. HermesService remains this repository's stable gateway boundary so later sessions can replace or embed the runtime without changing the HTTP contract.
+The upstream Hermes Agent runtime is installed user-scoped under %LOCALAPPDATA%\\hermes (currently C:\\Users\\mrdea\\AppData\\Local\\hermes) and configured independently of this repository. M1 verifies that upstream Hermes can complete a one-shot prompt through Ollama/qwen3.8:27b. HermesService remains this repository's stable gateway boundary so later sessions can replace or embed the runtime without changing the HTTP contract.
+
+The qwen3.8 Flash-Next preview is intentionally skipped for this Windows/AMD host. Its Ollama local tag is an MLX-oriented 125B preview with approximately 113 GB of model data, while the host's supported local acceleration path is the Windows AMD/ROCm path. Revisit only if a compatible runtime and hardware budget are explicitly established.
 
 ### Workflows
 

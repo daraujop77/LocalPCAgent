@@ -16,10 +16,10 @@ py -3.12 -m venv .venv
 .\scripts\dev.ps1
 ```
 
-The development gateway binds to `127.0.0.1:8000` by default. Check `http://127.0.0.1:8000/health` or use `.\.venv\Scripts\python.exe -m personal_ai.dev --check`. Ollama is the configured local Qwen backend; start it and ensure `qwen3.5:9b` is installed before sending chat requests:
+The development gateway binds to `127.0.0.1:8000` by default. Check `http://127.0.0.1:8000/health` or use `.\.venv\Scripts\python.exe -m personal_ai.dev --check`. Ollama is the configured local Qwen backend; start it and ensure `qwen3.8:27b` is installed before sending chat requests:
 
 ```powershell
-ollama pull qwen3.5:9b
+ollama pull qwen3.8:27b
 ollama list
 ```
 

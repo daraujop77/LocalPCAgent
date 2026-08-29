@@ -9,9 +9,9 @@ M1 — Local AI (complete).
 - The repository is connected to GitHub origin/main and the M0 baseline is preserved in history.
 - Python 3.12 project metadata, editable installation, pytest, and Ruff are configured.
 - Safe environment-backed settings cover the gateway and local Qwen endpoint.
-- Ollama is installed on the Windows host and serves qwen3.5:9b at the configured local endpoint.
-- Upstream Hermes Agent 0.20.6 is installed user-scoped and configured for Ollama/qwen3.5:9b.
-- Upstream Hermes one-shot generation was verified with the exact response HERMES_QWEN_OK.
+- Ollama is installed on the Windows host and serves qwen3.8:27b at the configured local endpoint.
+- Upstream Hermes Agent 0.20.6 is installed user-scoped and configured for Ollama/qwen3.8:27b.
+- Upstream Hermes one-shot generation was verified with the exact response HERMES_QWEN38_OK.
 - The gateway starts locally with the PowerShell development script.
 - HermesService validates one-turn chat requests and returns structured responses.
 - HttpQwenClient speaks the local OpenAI-compatible GET /models and POST /chat/completions protocol.
@@ -50,6 +50,8 @@ The latest verification is recorded after the M1 checks run. It uses Python 3.12
 - scripts/check.ps1: passed — Ruff formatting/linting clean and 19 tests passed in 0.71s.
 - personal_ai.dev --check: passed — gateway, workflows, Hermes/Qwen, and all integration health checks returned ready/ok.
 - fake local-model chat tests: passed in the automated suite.
-- live Ollama model check: passed — qwen3.5:9b and qwen3:8b were listed by the local OpenAI-compatible endpoint.
-- live upstream Hermes one-shot: passed — qwen3.5:9b returned HERMES_QWEN_OK.
-- live gateway chat smoke test: passed — local gateway returned a generated Qwen response through POST /api/v1/chat.
+- live Ollama model check: passed — qwen3.8:27b, qwen3.5:9b, and qwen3:8b were listed by the local OpenAI-compatible endpoint.
+- qwen3.8:27b model pull: passed — Ollama completed the 17 GB local model pull after transient resumable TLS retries.
+- live upstream Hermes one-shot: passed — qwen3.8:27b returned HERMES_QWEN38_OK.
+- live gateway health/discovery: passed — all checks returned ready/ok; PC, Blender, and SC2 remained disabled_in_m1.
+- live gateway chat smoke test: passed — qwen3.8:27b returned GATEWAY_QWEN38_OK through POST /api/v1/chat in 1.67 seconds.

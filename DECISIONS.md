@@ -71,3 +71,11 @@ Decision: Use qwen3.5:9b as the repository and Hermes default local model. Keep 
 Reason: Ollama reports qwen3:8b with a 40K context window, below the installed Hermes Agent's 64K minimum. Ollama reports qwen3.5:9b with a 256K context window, and the model fits the inspected host's available memory/storage envelope.
 
 Date: 2026-08-30
+
+## ADR-010 — Use qwen3.8:27b as the M1 local default
+
+Decision: Use qwen3.8:27b as the repository and Hermes default local model. Keep qwen3:8b and qwen3.5:9b installed as optional local models, but do not advertise them as the M1 default. Do not pull qwen3.8-flash-next:125b-mlx on this Windows/AMD host.
+
+Reason: The requested qwen3.8:27b model is available through Ollama, reports a 256K context window, and meets Hermes's 64K minimum. The Flash-Next preview is an MLX-oriented 125B model with approximately 113 GB of local data, which is not a practical target for this host's Windows/AMD runtime.
+
+Date: 2026-08-29
