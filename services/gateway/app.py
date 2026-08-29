@@ -59,18 +59,24 @@ class GatewayApp:
             command_timeout_seconds=resolved_settings.pc_command_timeout_seconds,
         )
         privileged = PrivilegedHelperService.create_disabled(permissions)
+        codex = CodexHandoffService(
+            SubprocessCodexBackend(
+                executable=resolved_settings.codex_executable,
+                timeout_seconds=resolved_settings.codex_timeout_seconds,
+            ),
+            permissions,
+        )
+        hermes = HermesService(
+            model_client or HttpQwenClient(resolved_settings),
+            ModelRouter(),
+            codex=codex,
+        )
         return cls(
             settings=resolved_settings,
             workflows=WorkflowService(),
             integrations=(pc, BlenderIntegration(), Sc2Integration()),
-            hermes=HermesService(model_client or HttpQwenClient(resolved_settings), ModelRouter()),
-            codex=CodexHandoffService(
-                SubprocessCodexBackend(
-                    executable=resolved_settings.codex_executable,
-                    timeout_seconds=resolved_settings.codex_timeout_seconds,
-                ),
-                permissions,
-            ),
+            hermes=hermes,
+            codex=codex,
             pc=pc,
             permissions=permissions,
             privileged=privileged,
@@ -109,7 +115,10 @@ class GatewayApp:
     def tool_catalog(self) -> dict[str, Any]:
         return {
             "mode": "controlled-local-execution",
-            "hermes": {"capabilities": ["hermes.chat"], "execution": "enabled_local_qwen"},
+            "hermes": {
+                "capabilities": ["hermes.chat", "hermes.codex_handoff"],
+                "execution": "enabled_local_qwen_and_codex_boundary",
+            },
             "codex": {
                 "capabilities": ["codex.repository_handoff"],
                 "execution": "enabled_if_cli_available",
@@ -240,7 +249,7 @@ class GatewayApp:
                 "error": "invalid_request",
                 "details": str(exc),
             }
-        response = self.codex.delegate(task, approval_id=approval_id)
+        response = self.hermes.delegate_to_codex(task, approval_id=approval_id)
         if response.success:
             status = HTTPStatus.OK
         elif response.error in {"approval_required", "approval_requested"}:

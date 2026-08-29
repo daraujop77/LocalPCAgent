@@ -127,3 +127,27 @@ Decision: Add an importable helper service/backend protocol with a disabled defa
 Reason: The main AI service must remain non-administrator, and a placeholder helper must not become an accidental bypass. A fail-closed interface lets later work add an audited transport without weakening the current boundary.
 
 Date: 2026-08-29
+
+## ADR-017 — Route explicit coding handoffs through Hermes
+
+Decision: Keep coding handoffs explicit and structured, but make Hermes the conversational owner of the `delegate_to_codex` boundary. Ordinary chat continues to use Qwen; only a validated handoff request can reach Codex and it remains subject to the central approval policy.
+
+Reason: The M2 acceptance requires Hermes to hand repository work to Codex. A separate gateway endpoint is useful for clients, but it must not bypass the conversational orchestration boundary.
+
+Date: 2026-08-29
+
+## ADR-018 — Use structured PowerShell argv with trusted executable resolution
+
+Decision: PC application launch accepts only bare allowlisted names mapped at startup to resolved executable paths. PowerShell accepts an allowlisted verb and string arguments, quotes values into a fixed invocation, rejects expansion/injection syntax, and resolves path arguments under the PC workspace. Timeouts become structured provider failures.
+
+Reason: Basename-only executable checks and free-form script inspection allowed path and expansion bypasses. Structured arguments reduce injection surface while retaining a narrow Windows fallback capability.
+
+Date: 2026-08-29
+
+## ADR-019 — Report Codex deltas against a content baseline
+
+Decision: Capture a repository file-content baseline immediately before an approved Codex backend starts. Return `preexisting_files` separately and calculate `changed_files` from the before/after content maps.
+
+Reason: Git status after execution cannot distinguish a user edit that existed before handoff from a Codex change to the same path. Baseline comparison makes the observable result useful without requiring a clean checkout.
+
+Date: 2026-08-29

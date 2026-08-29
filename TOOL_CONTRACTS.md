@@ -114,7 +114,7 @@ A decision body optionally contains `decided_by` and `reason`. There is no authe
 }
 ~~~
 
-First call without `approval_id`, accept the returned request, then repeat the exact handoff with that ID. The permission scope excludes generated `task_id` and uses the resolved Git-root target plus task, revision, constraints, test argv, and timeout. The backend runs `codex exec --ephemeral --json --sandbox workspace-write`, observes dirty files, runs tests as argv without a shell, and never commits or pushes.
+First call without `approval_id`, accept the returned request, then repeat the exact handoff with that ID. The gateway routes this explicit handoff through Hermes's `delegate_to_codex` boundary. The permission scope excludes generated `task_id` and uses the resolved Git-root target plus task, revision, constraints, test argv, and timeout. The backend runs `codex exec --ephemeral --json --sandbox workspace-write`, reports `preexisting_files` separately, reports the before/after content delta in `changed_files`, runs tests as argv without a shell, and never commits or pushes.
 
 ## Controlled PC invocation
 
@@ -129,7 +129,19 @@ First call without `approval_id`, accept the returned request, then repeat the e
 }
 ~~~
 
-M3 actions remain available for system/process inspection, allowlisted applications, workspace-bounded files, restricted single-command PowerShell, windows, screenshots, and fallback input. Application and PowerShell verb allowlists come from the policy. Paths remain bounded to `PERSONAL_AI_PC_WORKSPACE_ROOT`. The provider never elevates.
+M3 actions remain available for system/process inspection, allowlisted applications, workspace-bounded files, restricted PowerShell, windows, screenshots, and fallback input. Application names are resolved to trusted paths before launch. PowerShell accepts `verb` plus an `args` string array, not a free-form `script`:
+
+~~~json
+{
+  "action": "pc.shell.powershell",
+  "parameters": {
+    "verb": "Get-ChildItem",
+    "args": ["-Path", "working"]
+  }
+}
+~~~
+
+PowerShell values are safely quoted and path arguments are resolved under `PERSONAL_AI_PC_WORKSPACE_ROOT`; expansion, injection syntax, absolute paths, and parent traversal are rejected. Subprocess timeouts return structured failures. The provider never elevates.
 
 ## Privileged helper
 

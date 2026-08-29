@@ -24,7 +24,7 @@ def make_test_app() -> GatewayApp:
         settings=Settings(),
         workflows=WorkflowService(),
         integrations=(pc, defaults.integrations[1], defaults.integrations[2]),
-        hermes=HermesService(client, ModelRouter()),
+        hermes=HermesService(client, ModelRouter(), codex=codex),
         codex=codex,
         pc=pc,
         permissions=permissions,
@@ -56,7 +56,8 @@ def test_gateway_exposes_discovery_without_tool_execution() -> None:
 
     assert status == HTTPStatus.OK
     assert payload["mode"] == "controlled-local-execution"
-    assert payload["hermes"]["execution"] == "enabled_local_qwen"
+    assert payload["hermes"]["execution"] == "enabled_local_qwen_and_codex_boundary"
+    assert "hermes.codex_handoff" in payload["hermes"]["capabilities"]
     assert payload["codex"]["execution"] == "enabled_if_cli_available"
     assert payload["providers"][0]["execution"] == "enabled_controlled_allowlisted"
     assert all(

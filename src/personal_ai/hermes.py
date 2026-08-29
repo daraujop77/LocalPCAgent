@@ -5,14 +5,27 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from time import perf_counter
+from typing import Protocol
 from uuid import uuid4
 
 from personal_ai.chat import ChatMessage, ChatRequest
-from personal_ai.contracts import HealthStatus
+from personal_ai.contracts import CodexHandoffResult, CodingTask, HealthStatus
 from personal_ai.qwen import ModelBackendError, ModelClient
 from personal_ai.router import ModelRouter, ModelSelection
 
 logger = logging.getLogger(__name__)
+
+
+class CodexDelegator(Protocol):
+    """Explicit repository handoff boundary owned by the conversational layer."""
+
+    def delegate(
+        self,
+        task: CodingTask,
+        *,
+        approval_id: str | None = None,
+    ) -> CodexHandoffResult:
+        """Delegate one already-validated coding task to Codex."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,6 +67,7 @@ class HermesService:
 
     model_client: ModelClient
     router: ModelRouter
+    codex: CodexDelegator | None = None
 
     def health(self) -> HealthStatus:
         backend = self.model_client.health()
@@ -153,6 +167,22 @@ class HermesService:
             usage=dict(reply.usage),
             latency_ms=latency_ms,
         )
+
+    def delegate_to_codex(
+        self,
+        task: CodingTask,
+        *,
+        approval_id: str | None = None,
+    ) -> CodexHandoffResult:
+        """Route an explicit coding handoff through Hermes to the Codex boundary."""
+
+        if self.codex is None:
+            raise RuntimeError("Codex delegation is not configured")
+        logger.info(
+            "hermes_codex_handoff_requested",
+            extra={"task_id": task.task_id, "repository_path": task.repository_path},
+        )
+        return self.codex.delegate(task, approval_id=approval_id)
 
     def _failure(
         self,

@@ -12,6 +12,9 @@ M4 — Permission System is complete. M5 — Blender Bridge has not started.
 - Approval requests and lifecycle events are visible through `/api/v1/approvals`, `/api/v1/approvals/{id}`, and `/api/v1/approvals/events`. They are process-local in M4.
 - Codex repository handoffs and PC actions use the shared `PermissionService`. `approval_granted: true` is ignored and cannot bypass policy.
 - PC application and PowerShell verb allowlists are owned by the validated permission policy. Workspace path restrictions and native Windows controls from M3 remain active.
+- M3 remediation now launches only startup-resolved allowlisted executable paths, uses structured PowerShell arguments with workspace path resolution, and converts subprocess timeouts into structured failures.
+- Hermes now owns the explicit delegation boundary to Codex. Codex handoffs report pre-existing files separately from the content delta produced during the handoff.
+- Qwen readiness verifies that the configured model ID is present in the local `/models` response.
 - `/api/v1/permissions` exposes the active policy summary. Health and tool discovery report the permission service and privileged-helper boundary.
 - A level-3 privileged action requires normal scoped approval and still fails closed because no elevated helper executable or transport is enabled. The gateway/main service remains non-administrator.
 - The local gateway, Hermes/Qwen boundary, observable Codex handoff, and controlled PC provider from earlier milestones remain available.
@@ -39,7 +42,7 @@ Verification was run on Windows with the repository Python 3.12 environment.
 
 - `python -m ruff check .`: passed.
 - `python -m ruff format --check .`: passed.
-- `python -m pytest -q`: passed — 41 tests.
+- `python -m pytest -q`: passed — 45 tests.
 - Permission acceptance coverage proves automatic safe actions, paused destructive actions, lifecycle transitions, expiry, exact scope binding, one-time consumption, legacy-boolean non-bypass, and privileged fail-closed behavior.
 - Gateway integration coverage proves approval acceptance and audited execution for PC/Codex plus the disabled privileged boundary.
 - Live `scripts/pc-acceptance.ps1`: updated to use M4 approval IDs; not run because it intentionally controls Notepad.

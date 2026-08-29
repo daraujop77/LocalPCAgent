@@ -109,9 +109,23 @@ class HttpQwenClient:
             "model": self._model_name,
         }
         try:
-            self._request("GET", "models", timeout=self._health_timeout_seconds)
+            response = self._request("GET", "models", timeout=self._health_timeout_seconds)
         except ModelBackendError as exc:
             details["error"] = exc.code
+            return HealthStatus(name="qwen", status="unavailable", ready=False, details=details)
+        models = response.get("data")
+        model_ids = (
+            sorted(
+                item["id"]
+                for item in models
+                if isinstance(item, dict) and isinstance(item.get("id"), str)
+            )
+            if isinstance(models, list)
+            else []
+        )
+        if self._model_name not in model_ids:
+            details["available_models"] = model_ids
+            details["error"] = "qwen_model_not_found"
             return HealthStatus(name="qwen", status="unavailable", ready=False, details=details)
         return HealthStatus(name="qwen", status="ok", ready=True, details=details)
 

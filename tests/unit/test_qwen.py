@@ -63,3 +63,17 @@ def test_http_qwen_client_uses_openai_compatible_local_protocol() -> None:
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+def test_http_qwen_health_requires_the_configured_model() -> None:
+    settings = Settings(qwen_model="qwen-required")
+    client = HttpQwenClient(settings)
+    client._request = lambda method, path, *, timeout, payload=None: {  # type: ignore[method-assign]
+        "data": [{"id": "another-model"}]
+    }
+
+    health = client.health()
+
+    assert health.ready is False
+    assert health.details["error"] == "qwen_model_not_found"
+    assert health.details["available_models"] == ["another-model"]

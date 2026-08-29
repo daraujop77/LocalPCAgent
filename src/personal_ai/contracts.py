@@ -101,6 +101,7 @@ class CodexHandoffResult:
     summary: str
     changed_files: tuple[str, ...] = ()
     tests: tuple[TestRun, ...] = ()
+    preexisting_files: tuple[str, ...] = ()
     logs: tuple[str, ...] = ()
     warnings: tuple[str, ...] = ()
     error: str | None = None
@@ -118,6 +119,7 @@ class CodexHandoffResult:
             "summary": self.summary,
             "changed_files": list(self.changed_files),
             "tests": [test.to_dict() for test in self.tests],
+            "preexisting_files": list(self.preexisting_files),
             "logs": list(self.logs),
             "warnings": list(self.warnings),
             "error": self.error,

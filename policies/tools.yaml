@@ -1,6 +1,7 @@
 mode: structured_contracts
 execution:
   hermes_chat: enabled_local_qwen
+  hermes_codex_handoff: enabled_explicit_approval_boundary
   codex: enabled_if_cli_available
   pc: enabled_controlled_allowlisted
   permissions: enabled_process_local
@@ -15,6 +16,7 @@ return_fields:
   - target
   - summary
   - changed_files
+  - preexisting_files
   - artifacts
   - logs
   - warnings

@@ -39,6 +39,7 @@ def test_codex_handoff_requires_approval_without_starting_backend(tmp_path) -> N
 
 def test_codex_handoff_observes_changes_and_runs_tests(tmp_path) -> None:
     repo = _git_repo(tmp_path)
+    (repo / "preexisting.txt").write_text("user change\n", encoding="utf-8")
     permissions = make_permission_service()
     service = CodexHandoffService(FakeCodexBackend(), permissions)
     test_command = (
@@ -62,6 +63,7 @@ def test_codex_handoff_observes_changes_and_runs_tests(tmp_path) -> None:
     assert result.success is True
     assert result.error is None
     assert result.changed_files == ("codex-handoff.txt",)
+    assert result.preexisting_files == ("preexisting.txt",)
     assert len(result.tests) == 1
     assert result.tests[0].success is True
     assert result.starting_revision != result.ending_revision or result.starting_revision

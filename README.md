@@ -43,12 +43,22 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/v1/codex/handoff `
 
 Accept the returned `approval_id` with `POST /api/v1/approvals/{approval_id}/accept`, then repeat the exact handoff payload with that `approval_id`. Approvals expire after five minutes by default, are bound to the exact action/target/parameters, and can be consumed only once.
 
+The gateway routes this explicit coding handoff through Hermes's `delegate_to_codex` boundary before the central permission check reaches Codex.
+
 Example read-only PC operation:
 
 ```powershell
 Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/v1/pc/invoke `
   -ContentType "application/json" `
   -Body '{"action":"pc.system_info","parameters":{}}'
+```
+
+The restricted PowerShell operation uses a structured verb and argument array; free-form scripts are rejected:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/v1/pc/invoke `
+  -ContentType "application/json" `
+  -Body '{"action":"pc.shell.powershell","parameters":{"verb":"Get-ChildItem","args":["-Path","."]}}'
 ```
 
 Run the opt-in Notepad acceptance only when the local gateway is running and GUI interaction is wanted:

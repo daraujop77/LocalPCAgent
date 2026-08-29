@@ -68,6 +68,10 @@ class PcHostError(RuntimeError):
 class NativeWindowsPcControl:
     """Implement the M3 primitives without a shell or administrator privileges."""
 
+    _powershell_path_parameters = frozenset(
+        {"-path", "-literalpath", "-destination", "-target", "-filepath", "-workingdirectory"}
+    )
+
     def __init__(
         self,
         workspace_root: str | Path | None = None,
@@ -92,6 +96,11 @@ class NativeWindowsPcControl:
         self.allowed_applications = frozenset(
             Path(name).name.lower() for name in allowed_applications
         )
+        self.allowed_application_paths = {
+            name: Path(resolved).expanduser().resolve()
+            for name in self.allowed_applications
+            if (resolved := shutil.which(name)) is not None
+        }
         self.allowed_powershell_verbs = frozenset(
             verb.casefold() for verb in allowed_powershell_verbs
         )
@@ -109,6 +118,9 @@ class NativeWindowsPcControl:
                 "administrator_required": False,
                 "workspace_root": str(self.workspace_root),
                 "allowed_applications": sorted(self.allowed_applications),
+                "allowed_application_paths": {
+                    name: str(path) for name, path in self.allowed_application_paths.items()
+                },
                 "allowed_powershell_verbs": sorted(self.allowed_powershell_verbs),
             },
         )
@@ -160,6 +172,16 @@ class NativeWindowsPcControl:
                 success=False,
                 summary=f"PC operation rejected: {exc.code}.",
                 error=exc.code,
+            )
+        except subprocess.TimeoutExpired as exc:
+            logger.warning(
+                "pc_operation_timeout",
+                extra={"action": action, "target": target, "timeout": exc.timeout},
+            )
+            result = PcExecution(
+                success=False,
+                summary="PC operation timed out.",
+                error="pc_operation_timeout",
             )
         except (OSError, ValueError, TypeError) as exc:
             logger.exception("pc_operation_failed", extra={"action": action})
@@ -277,8 +299,17 @@ class NativeWindowsPcControl:
             raise PcHostError("executable_required")
         executable = executable.strip()
         executable_name = Path(executable).name.lower()
-        if executable_name not in self.allowed_applications:
+        if (
+            executable_name not in self.allowed_applications
+            or Path(executable).name.casefold() != executable.casefold()
+            or "/" in executable
+            or "\\" in executable
+            or ":" in executable
+        ):
             raise PcHostError("application_not_allowlisted")
+        trusted_executable = self.allowed_application_paths.get(executable_name)
+        if trusted_executable is None:
+            raise PcHostError("application_not_available")
         raw_args = params.get("args", ())
         if isinstance(raw_args, str) or not isinstance(raw_args, (list, tuple)):
             raise PcHostError("args_must_be_array")
@@ -286,7 +317,7 @@ class NativeWindowsPcControl:
             isinstance(item, str) and "\x00" not in item for item in raw_args
         ):
             raise PcHostError("invalid_application_args")
-        command = [executable]
+        command = [str(trusted_executable)]
         path_value = params.get("path")
         opened_path: Path | None = None
         if path_value is not None:
@@ -432,10 +463,7 @@ class NativeWindowsPcControl:
 
     def _powershell(self, target: str | None, params: Mapping[str, object]) -> PcExecution:
         del target
-        script = params.get("script")
-        if not isinstance(script, str) or not script.strip():
-            raise PcHostError("script_required")
-        self._validate_powershell_script(script)
+        verb, args = self._parse_powershell_command(params)
         working_directory = self._resolve_path(
             params.get("working_directory") or self.workspace_root,
             must_exist=True,
@@ -445,8 +473,11 @@ class NativeWindowsPcControl:
         executable = shutil.which("powershell.exe") or shutil.which("pwsh")
         if executable is None:
             raise PcHostError("powershell_unavailable")
+        command = "& " + verb
+        if args:
+            command += " " + " ".join(self._powershell_argument(arg) for arg in args)
         completed = subprocess.run(
-            [executable, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script],
+            [executable, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command],
             cwd=working_directory,
             capture_output=True,
             text=True,
@@ -468,37 +499,51 @@ class NativeWindowsPcControl:
             reversible=False,
         )
 
-    def _validate_powershell_script(self, script: str) -> None:
-        if any(
-            marker in script
-            for marker in (
-                "\n",
-                "\r",
-                ";",
-                "|",
-                "&",
-                ">",
-                "<",
-                "`",
-                "$",
-                "(",
-                ")",
-                "{",
-                "}",
-                "[",
-                "]",
-            )
-        ):
-            raise PcHostError("powershell_script_not_allowlisted")
-        match = re.match(r"^\s*([A-Za-z][A-Za-z0-9-]*)", script)
-        if match is None:
+    def _parse_powershell_command(
+        self,
+        params: Mapping[str, object],
+    ) -> tuple[str, tuple[str, ...]]:
+        verb = params.get("verb")
+        args = params.get("args", ())
+        if not isinstance(verb, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9-]*", verb):
             raise PcHostError("powershell_command_not_allowlisted")
-        if match.group(1).casefold() not in self.allowed_powershell_verbs:
+        if verb.casefold() not in self.allowed_powershell_verbs:
             raise PcHostError("powershell_command_not_allowlisted")
-        for token in script.split():
-            normalized = token.strip("\"'")
-            if normalized.startswith(("\\", "/")) or ".." in normalized or ":" in normalized:
+        if isinstance(args, str) or not isinstance(args, (list, tuple)) or len(args) > 16:
+            raise PcHostError("powershell_args_required")
+        if not all(isinstance(arg, str) and "\x00" not in arg for arg in args):
+            raise PcHostError("powershell_args_required")
+        for arg in args:
+            if any(marker in arg for marker in ("\n", "\r", "`", "$", ";", "|", "&", ">", "<")):
+                raise PcHostError("powershell_argument_not_allowlisted")
+            if arg.startswith(("/", "\\")) or "~" in arg or ":" in arg:
                 raise PcHostError("powershell_path_not_allowlisted")
+            parts = re.split(r"[/\\]", arg)
+            if ".." in parts:
+                raise PcHostError("powershell_path_not_allowlisted")
+        expects_path = False
+        for arg in args:
+            if re.fullmatch(r"-[A-Za-z][A-Za-z0-9-]*", arg):
+                expects_path = arg.casefold() in self._powershell_path_parameters
+                continue
+            if expects_path:
+                if any(marker in arg for marker in ("*", "?")):
+                    raise PcHostError("powershell_path_not_allowlisted")
+                self._resolve_path(arg, must_exist=False)
+                expects_path = False
+        if expects_path:
+            raise PcHostError("powershell_path_not_allowlisted")
+        return verb, tuple(args)
+
+    @staticmethod
+    def _powershell_literal(value: str) -> str:
+        return "'" + value.replace("'", "''") + "'"
+
+    @classmethod
+    def _powershell_argument(cls, value: str) -> str:
+        if re.fullmatch(r"-[A-Za-z][A-Za-z0-9-]*", value):
+            return value
+        return cls._powershell_literal(value)
 
     def _window_list(self, target: str | None, params: Mapping[str, object]) -> PcExecution:
         del target, params

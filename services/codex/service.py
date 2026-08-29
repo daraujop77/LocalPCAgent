@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import shutil
 import subprocess
@@ -217,6 +218,21 @@ class CodexHandoffService:
                 )
             )
 
+        baseline = self._repository_snapshot(repository)
+        if baseline is None:
+            return self._record(
+                self._failure(
+                    task,
+                    started,
+                    starting_revision=starting_revision,
+                    error="repository_snapshot_failed",
+                    summary="Codex handoff rejected because the repository baseline could not be captured.",
+                    warnings=("No Codex process was started.",),
+                    approval_level=decision.level,
+                    approval=decision.approval.to_dict() if decision.approval else None,
+                )
+            )
+        preexisting_files = self._working_tree_paths(repository)
         try:
             backend_result = self.backend.run(task)
         except Exception as exc:  # noqa: BLE001 - provider failures must stay structured
@@ -228,14 +244,21 @@ class CodexHandoffService:
                 error="codex_backend_failed",
             )
         ending_revision = self._git_revision(repository)
-        changed_files = self._changed_files(repository)
+        ending_snapshot = self._repository_snapshot(repository)
+        changed_files = self._changed_files(
+            baseline,
+            ending_snapshot if ending_snapshot is not None else baseline,
+        )
         tests = self._run_tests(task, repository) if backend_result.success else ()
         tests_failed = any(not test.success for test in tests)
-        success = backend_result.success and not tests_failed
+        success = backend_result.success and not tests_failed and ending_snapshot is not None
         error = backend_result.error
         if tests_failed:
             error = "tests_failed"
         warnings = list(backend_result.warnings)
+        if ending_snapshot is None:
+            error = error or "repository_snapshot_failed"
+            warnings.append("The post-handoff repository state could not be captured.")
         if tests and not tests_failed:
             summary = f"{backend_result.summary} Post-handoff tests passed."
         elif tests_failed:
@@ -251,6 +274,7 @@ class CodexHandoffService:
             summary=summary,
             changed_files=changed_files,
             tests=tests,
+            preexisting_files=preexisting_files,
             logs=backend_result.logs + (f"changed_files={len(changed_files)}",),
             warnings=tuple(warnings),
             error=error,
@@ -314,20 +338,61 @@ class CodexHandoffService:
         return revision if completed.returncode == 0 and revision else None
 
     @staticmethod
-    def _changed_files(repository: Path) -> tuple[str, ...]:
+    def _repository_snapshot(repository: Path) -> dict[str, str] | None:
         completed = subprocess.run(
-            ["git", "status", "--porcelain", "--untracked-files=all"],
+            ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
             cwd=repository,
             capture_output=True,
-            text=True,
             check=False,
             shell=False,
         )
+        if completed.returncode != 0:
+            return None
+        snapshot: dict[str, str] = {}
+        for raw_path in completed.stdout.split(b"\x00"):
+            if not raw_path:
+                continue
+            relative_path = raw_path.decode("utf-8", errors="surrogateescape")
+            path = repository / relative_path
+            try:
+                if path.is_symlink():
+                    digest_input = f"symlink:{path.readlink()}".encode("utf-8", "surrogateescape")
+                elif path.is_file():
+                    digest_input = path.read_bytes()
+                else:
+                    digest_input = b"<missing>"
+            except OSError:
+                digest_input = b"<unreadable>"
+            snapshot[relative_path] = hashlib.sha256(digest_input).hexdigest()
+        return snapshot
+
+    @staticmethod
+    def _working_tree_paths(repository: Path) -> tuple[str, ...]:
+        completed = subprocess.run(
+            ["git", "status", "--porcelain=v1", "--untracked-files=all", "-z"],
+            cwd=repository,
+            capture_output=True,
+            check=False,
+            shell=False,
+        )
+        if completed.returncode != 0:
+            return ()
         changed: set[str] = set()
-        for line in completed.stdout.splitlines():
-            if len(line) >= 4:
-                changed.add(line[3:].strip().strip('"'))
+        for record in completed.stdout.split(b"\x00"):
+            if len(record) < 4:
+                continue
+            path = record[3:].decode("utf-8", errors="surrogateescape").strip().strip('"')
+            changed.add(path)
         return tuple(sorted(changed))
+
+    @staticmethod
+    def _changed_files(
+        before: Mapping[str, str],
+        after: Mapping[str, str],
+    ) -> tuple[str, ...]:
+        return tuple(
+            sorted(path for path in set(before) | set(after) if before.get(path) != after.get(path))
+        )
 
     @classmethod
     def _run_tests(cls, task: CodingTask, repository: Path) -> tuple[TestRun, ...]:
@@ -389,6 +454,7 @@ class CodexHandoffService:
         warnings: tuple[str, ...] = (),
         approval_level: ApprovalLevel = 2,
         approval: Mapping[str, object] | None = None,
+        preexisting_files: tuple[str, ...] = (),
     ) -> CodexHandoffResult:
         return CodexHandoffResult(
             success=False,
@@ -401,6 +467,7 @@ class CodexHandoffService:
             error=error,
             approval_level=approval_level,
             approval=approval,
+            preexisting_files=preexisting_files,
             duration_ms=CodexHandoffService._duration_ms(started),
         )
 

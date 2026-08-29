@@ -5,7 +5,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $relativePath = "artifacts/m3-pc-acceptance-$([guid]::NewGuid().ToString('N')).txt"
-$knownText = "Personal AI Platform M3 acceptance`r`n"
+$knownText = "Personal AI Platform M4 acceptance`r`n"
 
 function Invoke-PcAction {
     param(
