@@ -2,7 +2,7 @@
 
 This repository is the persistent handoff point for the local-first Personal AI Platform described in [`MasterPlan/MasterPlan.md`](MasterPlan/MasterPlan.md).
 
-The repository currently contains M0 — Foundation only. The Python runtime is intentionally small and dependency-light on the Windows host. It provides configuration, structured logging, tool/result contracts, service health checks, and safe integration boundaries. It does not yet connect Hermes, Qwen, LangGraph, Blender, SC2, or unrestricted PC control.
+The repository now contains M0 — Foundation and M1 — Local AI. The Python runtime is intentionally small and dependency-light on the Windows host. M1 provides a Hermes conversational boundary, deterministic routing, and an OpenAI-compatible local Qwen client. It does not yet include Codex delegation, LangGraph durability, Blender/SC2 automation, or unrestricted PC control.
 
 ## Quick start on Windows
 
@@ -16,9 +16,17 @@ py -3.12 -m venv .venv
 .\scripts\dev.ps1
 ```
 
-The development gateway binds to `127.0.0.1:8000` by default. Check `http://127.0.0.1:8000/health` or use `.\.venv\Scripts\python.exe -m personal_ai.dev --check`.
+The development gateway binds to `127.0.0.1:8000` by default. Check `http://127.0.0.1:8000/health` or use `.\.venv\Scripts\python.exe -m personal_ai.dev --check`. Start a compatible local Qwen server at `http://127.0.0.1:11434/v1` (the default) before sending chat requests.
 
-Environment overrides use the `PERSONAL_AI_` prefix. Supported values are `HOST`, `PORT`, `ENVIRONMENT`, `LOG_LEVEL`, and `ALLOW_REMOTE`. Remote binding is disabled by default.
+Example chat request:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/v1/chat `
+  -ContentType "application/json" `
+  -Body '{"message":"Hello","task_type":"general"}'
+```
+
+Environment overrides use the `PERSONAL_AI_` prefix. Supported values are `HOST`, `PORT`, `ENVIRONMENT`, `LOG_LEVEL`, `ALLOW_REMOTE`, `QWEN_BASE_URL`, `QWEN_MODEL`, `QWEN_TIMEOUT_SECONDS`, `QWEN_HEALTH_TIMEOUT_SECONDS`, and `QWEN_API_KEY`. Remote binding is disabled by default. A local API key is optional and is never logged.
 
 ## Handoff documents
 
@@ -31,5 +39,4 @@ Future agents should read these files before making changes:
 - [`TOOL_CONTRACTS.md`](TOOL_CONTRACTS.md) — structured contracts and safety boundaries;
 - [`ROADMAP.md`](ROADMAP.md) — milestone status.
 
-Do not begin M1 unless explicitly instructed.
-
+Do not begin M2 unless explicitly instructed.

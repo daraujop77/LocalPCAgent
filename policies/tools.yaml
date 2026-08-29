@@ -1,8 +1,9 @@
 mode: structured_contracts
 execution:
-  pc: disabled_in_m0
-  blender: disabled_in_m0
-  sc2: disabled_in_m0
+  hermes_chat: enabled_local_qwen
+  pc: disabled_in_m1
+  blender: disabled_in_m1
+  sc2: disabled_in_m1
   workflows: boundary_only
 return_fields:
   - success
@@ -18,4 +19,3 @@ return_fields:
   - reversible
   - approval_level
   - duration_ms
-

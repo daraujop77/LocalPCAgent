@@ -1,11 +1,11 @@
 # Next tasks
 
-M0 is complete. The following bounded tasks are proposed for M1 only; do not start them without explicit instruction.
+M1 is complete. The following bounded tasks are proposed for M2 only; do not start them without explicit instruction.
 
-1. Select and document the Hermes integration boundary without exposing raw Hermes endpoints.
-2. Add a local Qwen client interface with a configurable local endpoint and a safe unavailable-backend response.
-3. Implement deterministic model-routing rules for the M1 task categories and log the selected model, reason, fallback, and outcome.
-4. Add a minimal local chat request/response contract and gateway route with structured errors.
-5. Add integration tests using a fake local-model backend; no live model or cloud credential should be required for CI.
-6. Update `TOOL_CONTRACTS.md`, `STATUS.md`, and `DECISIONS.md` with the actual M1 backend choice and test results.
+1. Define the Codex handoff contract: repository path, task, starting revision, constraints, result, and approval boundary.
+2. Add a provider interface and fake Codex backend so delegation can be tested without external credentials.
+3. Implement a controlled coding-task handoff that keeps changes observable and returns changed files, test results, and a summary.
+4. Add a test-repository acceptance flow where Codex modifies a fixture and the gateway reports the result.
+5. Add failure handling for unavailable Codex, rejected handoffs, failed tests, and partial results.
+6. Update TOOL_CONTRACTS.md, STATUS.md, and DECISIONS.md with the verified M2 handoff behavior.
 

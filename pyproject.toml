@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "personal-ai-platform"
-version = "0.1.0"
-description = "Local-first personal AI platform foundation"
+version = "0.2.0"
+description = "Local-first personal AI platform M0/M1 foundation"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = []
@@ -41,4 +41,3 @@ select = ["E4", "E7", "E9", "F", "I", "UP"]
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
-

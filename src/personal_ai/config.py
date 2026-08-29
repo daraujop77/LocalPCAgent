@@ -26,9 +26,19 @@ def _parse_port(value: str) -> int:
     return port
 
 
+def _parse_positive_float(value: str, *, name: str) -> float:
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a number") from exc
+    if parsed <= 0:
+        raise ValueError(f"{name} must be greater than zero")
+    return parsed
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
-    """Runtime settings for the development gateway."""
+    """Runtime settings for the development gateway and local Qwen client."""
 
     app_name: str = "personal-ai-platform"
     host: str = "127.0.0.1"
@@ -36,6 +46,11 @@ class Settings:
     environment: str = "development"
     log_level: str = "INFO"
     allow_remote: bool = False
+    qwen_base_url: str = "http://127.0.0.1:11434/v1"
+    qwen_model: str = "qwen3:8b"
+    qwen_timeout_seconds: float = 60.0
+    qwen_health_timeout_seconds: float = 2.0
+    qwen_api_key: str | None = None
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None) -> Settings:
@@ -49,4 +64,15 @@ class Settings:
                 values.get("PERSONAL_AI_ALLOW_REMOTE", "false"),
                 name="PERSONAL_AI_ALLOW_REMOTE",
             ),
+            qwen_base_url=values.get("PERSONAL_AI_QWEN_BASE_URL", "http://127.0.0.1:11434/v1"),
+            qwen_model=values.get("PERSONAL_AI_QWEN_MODEL", "qwen3:8b"),
+            qwen_timeout_seconds=_parse_positive_float(
+                values.get("PERSONAL_AI_QWEN_TIMEOUT_SECONDS", "60"),
+                name="PERSONAL_AI_QWEN_TIMEOUT_SECONDS",
+            ),
+            qwen_health_timeout_seconds=_parse_positive_float(
+                values.get("PERSONAL_AI_QWEN_HEALTH_TIMEOUT_SECONDS", "2"),
+                name="PERSONAL_AI_QWEN_HEALTH_TIMEOUT_SECONDS",
+            ),
+            qwen_api_key=values.get("PERSONAL_AI_QWEN_API_KEY") or None,
         )

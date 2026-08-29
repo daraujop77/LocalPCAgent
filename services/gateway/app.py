@@ -1,9 +1,10 @@
-"""Minimal local HTTP gateway with read-only health and discovery endpoints."""
+"""Minimal local HTTP gateway with health, discovery, and local chat endpoints."""
 
 from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -14,8 +15,12 @@ from integrations.blender.service import BlenderIntegration
 from integrations.pc.service import PcIntegration
 from integrations.sc2.service import Sc2Integration
 from personal_ai import __version__
+from personal_ai.chat import ChatRequest, ChatValidationError
 from personal_ai.config import Settings
 from personal_ai.contracts import HealthStatus, ToolProvider
+from personal_ai.hermes import HermesService
+from personal_ai.qwen import HttpQwenClient, ModelClient
+from personal_ai.router import ModelRouter
 from services.workflows.service import WorkflowService
 
 logger = logging.getLogger(__name__)
@@ -26,13 +31,20 @@ class GatewayApp:
     settings: Settings
     workflows: WorkflowService
     integrations: tuple[ToolProvider, ...]
+    hermes: HermesService
 
     @classmethod
-    def create_default(cls, settings: Settings | None = None) -> GatewayApp:
+    def create_default(
+        cls,
+        settings: Settings | None = None,
+        model_client: ModelClient | None = None,
+    ) -> GatewayApp:
+        resolved_settings = settings or Settings.from_env()
         return cls(
-            settings=settings or Settings.from_env(),
+            settings=resolved_settings,
             workflows=WorkflowService(),
             integrations=(PcIntegration(), BlenderIntegration(), Sc2Integration()),
+            hermes=HermesService(model_client or HttpQwenClient(resolved_settings), ModelRouter()),
         )
 
     def _checks(self) -> dict[str, HealthStatus]:
@@ -44,6 +56,7 @@ class GatewayApp:
                 details={"bind": self.settings.host, "port": self.settings.port},
             ),
             "workflows": self.workflows.health(),
+            "hermes": self.hermes.health(),
         }
         checks.update({provider.provider_name: provider.health() for provider in self.integrations})
         return checks
@@ -63,19 +76,29 @@ class GatewayApp:
 
     def tool_catalog(self) -> dict[str, Any]:
         return {
-            "mode": "discovery-only",
+            "mode": "discovery-and-chat",
+            "hermes": {"capabilities": ["hermes.chat"], "execution": "enabled_local_qwen"},
             "providers": [
                 {
                     "provider": provider.provider_name,
                     "capabilities": list(provider.capabilities()),
-                    "execution": "disabled_in_m0",
+                    "execution": "disabled_in_m1",
                 }
                 for provider in self.integrations
             ],
         }
 
-    def dispatch(self, method: str, path: str) -> tuple[int, dict[str, Any]]:
+    def dispatch(
+        self,
+        method: str,
+        path: str,
+        body: bytes | Mapping[str, object] | None = None,
+    ) -> tuple[int, dict[str, Any]]:
         route = urlsplit(path).path
+        if route == "/api/v1/chat":
+            if method != "POST":
+                return HTTPStatus.METHOD_NOT_ALLOWED, {"error": "method_not_allowed"}
+            return self._dispatch_chat(body)
         if method != "GET":
             return HTTPStatus.METHOD_NOT_ALLOWED, {"error": "method_not_allowed"}
         if route == "/":
@@ -96,6 +119,27 @@ class GatewayApp:
             return HTTPStatus.OK, {"runs": self.workflows.list_runs()}
         return HTTPStatus.NOT_FOUND, {"error": "not_found", "path": route}
 
+    def _dispatch_chat(
+        self,
+        body: bytes | Mapping[str, object] | None,
+    ) -> tuple[int, dict[str, Any]]:
+        try:
+            if isinstance(body, (bytes, bytearray)):
+                payload = json.loads(body.decode("utf-8"))
+            else:
+                payload = body
+            request = ChatRequest.from_payload(payload)
+        except (UnicodeDecodeError, json.JSONDecodeError, ChatValidationError) as exc:
+            return HTTPStatus.BAD_REQUEST, {
+                "success": False,
+                "error": "invalid_request",
+                "details": str(exc),
+            }
+
+        response = self.hermes.chat(request)
+        status = HTTPStatus.OK if response.success else HTTPStatus.SERVICE_UNAVAILABLE
+        return status, response.to_dict()
+
 
 class GatewayRequestHandler(BaseHTTPRequestHandler):
     """HTTP adapter kept separate so dispatch can be tested without sockets."""
@@ -109,7 +153,14 @@ class GatewayRequestHandler(BaseHTTPRequestHandler):
         self._handle("POST")
 
     def _handle(self, method: str) -> None:
-        status, payload = self.app.dispatch(method, self.path)
+        body = None
+        if method == "POST":
+            try:
+                content_length = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                content_length = 0
+            body = self.rfile.read(content_length)
+        status, payload = self.app.dispatch(method, self.path, body)
         body = json.dumps(payload).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
