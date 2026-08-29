@@ -1,0 +1,19 @@
+levels:
+  0:
+    name: read_only
+    automatic: true
+  1:
+    name: safe_reversible
+    automatic: true
+  2:
+    name: potentially_destructive
+    automatic: false
+  3:
+    name: sensitive_or_privileged
+    automatic: false
+main_process:
+  administrator_required: false
+privileged_helper:
+  enabled: false
+  allowlisted_api_only: true
+

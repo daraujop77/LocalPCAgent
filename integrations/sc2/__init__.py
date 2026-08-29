@@ -1,0 +1,1 @@
+"""StarCraft II integration boundary."""

@@ -1,0 +1,8 @@
+default: qwen-local
+specialists:
+  coding: codex
+  ideation: grok
+  large_context: gemini-optional
+  routine_local_automation: qwen-local
+router_mode: deterministic_rules
+

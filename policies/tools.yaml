@@ -1,0 +1,21 @@
+mode: structured_contracts
+execution:
+  pc: disabled_in_m0
+  blender: disabled_in_m0
+  sc2: disabled_in_m0
+  workflows: boundary_only
+return_fields:
+  - success
+  - tool
+  - action
+  - target
+  - summary
+  - changed_files
+  - artifacts
+  - logs
+  - warnings
+  - error
+  - reversible
+  - approval_level
+  - duration_ms
+
