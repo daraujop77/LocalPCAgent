@@ -1,11 +1,11 @@
 # Roadmap
 
-Status is intentionally conservative. M0 is complete and M1 implementation is complete; live local-model acceptance is pending. Later milestones remain planned.
+Status is intentionally conservative. M0 and M1 are complete. Later milestones remain planned.
 
 | Milestone | Status | Scope |
 | --- | --- | --- |
 | M0 — Foundation | Complete | Repository, Python tooling, contracts, safe skeletons, health, tests, handoff docs |
-| M1 — Local AI | Implementation complete; live backend pending | Hermes boundary, local Qwen client, deterministic router, local chat, model-selection logging |
+| M1 — Local AI | Complete | Hermes boundary, local Qwen client, deterministic router, local chat, model-selection logging, live Ollama/qwen3.5:9b acceptance |
 | M2 — Codex Integration | Planned | Observable Codex handoff and test-repository coding loop |
 | M3 — PC Control | Planned | Structured Windows app/filesystem/process/screenshot operations |
 | M4 — Permission System | Planned | Approvals, allowlists, privileged-helper boundary |
@@ -28,7 +28,7 @@ Status is intentionally conservative. M0 is complete and M1 implementation is co
 
 ## Sequencing constraints
 
-- Do not start M2 until the local Qwen backend is running and the M1 live-chat acceptance is verified.
+- Do not start M2 until explicitly instructed; M1 live-chat acceptance is verified against the local Ollama/qwen3.5:9b backend.
 - Do not begin serious SC2 work before Blender automation is stable.
 - Do not add multi-agent infrastructure before real workload demonstrates a need.
 - Do not expose raw Hermes, Qwen, Blender MCP, SC2 MCP, or the privileged helper publicly.

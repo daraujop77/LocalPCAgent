@@ -16,7 +16,14 @@ py -3.12 -m venv .venv
 .\scripts\dev.ps1
 ```
 
-The development gateway binds to `127.0.0.1:8000` by default. Check `http://127.0.0.1:8000/health` or use `.\.venv\Scripts\python.exe -m personal_ai.dev --check`. Start a compatible local Qwen server at `http://127.0.0.1:11434/v1` (the default) before sending chat requests.
+The development gateway binds to `127.0.0.1:8000` by default. Check `http://127.0.0.1:8000/health` or use `.\.venv\Scripts\python.exe -m personal_ai.dev --check`. Ollama is the configured local Qwen backend; start it and ensure `qwen3.5:9b` is installed before sending chat requests:
+
+```powershell
+ollama pull qwen3.5:9b
+ollama list
+```
+
+Hermes Agent is installed separately in the user profile by the official Windows installer. Its profile is configured for the same local endpoint and model.
 
 Example chat request:
 

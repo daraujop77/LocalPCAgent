@@ -47,7 +47,7 @@ class Settings:
     log_level: str = "INFO"
     allow_remote: bool = False
     qwen_base_url: str = "http://127.0.0.1:11434/v1"
-    qwen_model: str = "qwen3:8b"
+    qwen_model: str = "qwen3.5:9b"
     qwen_timeout_seconds: float = 60.0
     qwen_health_timeout_seconds: float = 2.0
     qwen_api_key: str | None = None
@@ -65,7 +65,7 @@ class Settings:
                 name="PERSONAL_AI_ALLOW_REMOTE",
             ),
             qwen_base_url=values.get("PERSONAL_AI_QWEN_BASE_URL", "http://127.0.0.1:11434/v1"),
-            qwen_model=values.get("PERSONAL_AI_QWEN_MODEL", "qwen3:8b"),
+            qwen_model=values.get("PERSONAL_AI_QWEN_MODEL", "qwen3.5:9b"),
             qwen_timeout_seconds=_parse_positive_float(
                 values.get("PERSONAL_AI_QWEN_TIMEOUT_SECONDS", "60"),
                 name="PERSONAL_AI_QWEN_TIMEOUT_SECONDS",

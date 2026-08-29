@@ -64,3 +64,10 @@ Reason: The master plan calls for observable routing and explicitly defers a com
 
 Date: 2026-08-30
 
+## ADR-009 — Use qwen3.5:9b as the M1 local default
+
+Decision: Use qwen3.5:9b as the repository and Hermes default local model. Keep qwen3:8b installed as an optional smaller model, but do not advertise it as the M1 Hermes default.
+
+Reason: Ollama reports qwen3:8b with a 40K context window, below the installed Hermes Agent's 64K minimum. Ollama reports qwen3.5:9b with a 256K context window, and the model fits the inspected host's available memory/storage envelope.
+
+Date: 2026-08-30
