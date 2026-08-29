@@ -2,7 +2,7 @@
 
 This repository is the persistent handoff point for the local-first Personal AI Platform described in [`MasterPlan/MasterPlan.md`](MasterPlan/MasterPlan.md).
 
-The repository now contains the bounded implementation through M14 — Web Gateway foundations. The Python runtime remains dependency-light on the Windows host. Codex handoffs, Blender/SC2 mutations, and destructive PC actions use centrally configured, scoped, expiring, one-time approvals. The main process remains non-administrator and the privileged-helper boundary fails closed. Live Blender/SC2 application validation is environment-dependent; GUI automation and game/editor launching remain disabled.
+The repository now contains the bounded implementation through M17 — Web Chat, Monitoring, and Mobile Approval UI foundations. The Python runtime remains dependency-light on the Windows host. Codex handoffs, Blender/SC2 mutations, and destructive PC actions use centrally configured, scoped, expiring, one-time approvals. The main process remains non-administrator and the privileged-helper boundary fails closed. Live Blender/SC2 application validation is environment-dependent; GUI automation and game/editor launching remain disabled.
 
 ## Quick start on Windows
 
@@ -14,6 +14,7 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
 .\scripts\check.ps1
 .\scripts\dev.ps1
+.\scripts\web.ps1
 ```
 
 The durable runner is graph-compatible without requiring LangGraph for the local baseline. Install the optional adapter dependency when evaluating it:
@@ -75,7 +76,7 @@ Run the opt-in Notepad acceptance only when the local gateway is running and GUI
 
 Environment overrides use the `PERSONAL_AI_` prefix. Supported values include `HOST`, `PORT`, `ENVIRONMENT`, `LOG_LEVEL`, `ALLOW_REMOTE`, the Qwen and Codex settings, `PERMISSION_POLICY_PATH`, the PC settings, `BLENDER_EXECUTABLE`, `BLENDER_COMMAND_TIMEOUT_SECONDS`, `SC2_WORKSPACE_ROOT`, `ARTIFACT_ROOT`, `MEMORY_ROOT`, and `WORKFLOW_STORAGE_ROOT`. Tool levels and allowlists live in the validated permission policy, not environment variables. Remote binding is disabled by default.
 
-## M5-M14 local workflows
+## M5-M17 local platform
 
 The gateway exposes structured Blender and SC2 provider boundaries at `/api/v1/blender/invoke` and `/api/v1/sc2/invoke`. Blender uses background CLI execution when `PERSONAL_AI_BLENDER_EXECUTABLE` is available and supports JSON scene fixtures for deterministic development. SC2 works with bounded project directories and ZIP-compatible working copies. Both integrations preserve sources and require central approval for mutations.
 

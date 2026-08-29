@@ -1,6 +1,6 @@
 # Tool contracts
 
-This file is the stable M5-M14 contract for gateway clients and future agents. All mutation-capable providers must use the central permission service before invoking a backend.
+This file is the stable M5-M17 contract for gateway clients and future agents. All mutation-capable providers must use the central permission service before invoking a backend.
 
 ## Common tool result
 
@@ -198,6 +198,10 @@ The development server binds to loopback unless remote binding is explicitly ena
 `GET /api/v1/runs/{id}/events` supports `after=<event_id>`, `event_type`, `limit`, and returns pagination metadata. `GET /api/v1/runs/{id}/events/stream` returns replayable `text/event-stream` frames and accepts `Last-Event-ID` for reconnects.
 
 `GET /api/v1/artifacts` returns bounded metadata with `artifact_id`, `path`, `name`, `content_type`, `size`, and run/workflow provenance. `GET /api/v1/artifacts/{artifact_id}` downloads only files below the configured artifact root; workflow-internal checkpoint/event files are not downloadable. Runs, approvals, approval events, memory episodes, semantic records, and skills support bounded `limit`/`offset` pages and their documented filters.
+
+## M15-M17 web shell
+
+`apps/web` is a static PWA shell. It uses only the gateway routes, sends the configured bearer/CSRF headers for writes, renders unavailable/degraded provider states, and provides explicit controls for approval decisions and run pause/resume/retry/cancel. It does not call Ollama, Hermes, Blender, SC2, Codex, or the privileged helper directly.
 
 ## Chat and workflow boundaries
 

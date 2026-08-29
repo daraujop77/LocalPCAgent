@@ -2,7 +2,7 @@
 
 ## Active milestone
 
-M14 — Web Gateway foundation is complete. M5–M13 now reflect their verified bounded scope; M15 — Web Chat / PWA shell is next.
+M17 — Web Chat, Monitoring, and Mobile Approval UI foundations are complete. M5–M16 reflect their verified bounded scope; M18 — Secure Remote Access is next.
 
 ## What works
 
@@ -24,13 +24,15 @@ M14 — Web Gateway foundation is complete. M5–M13 now reflect their verified 
 - MemoryService persists semantic facts, append-only episodic execution records, Hermes history context, and versioned procedural skill candidates. Repeated successful workflow procedures can suggest an unpromoted candidate; explicit validation and promotion remain required.
 - `/api/v1/blender/invoke`, `/api/v1/sc2/invoke`, `/api/v1/workflows`, `/api/v1/runs`, run controls, filtered memory endpoints, `/api/v1/artifacts`, artifact downloads, and SSE event replay are available through the local gateway.
 - The HTTP edge supports optional bearer authentication, CORS origin allowlisting, CSRF protection for browser writes, and refuses remote startup without an API token.
+- `apps/web` contains a dependency-free mobile PWA shell for chat, runs, approvals, artifacts, and system status using only the `/api/v1` gateway boundary.
+- The PWA also exposes bounded monitoring cards for tools, workflows, models, health, usage status, and artifacts, plus explicit mobile run controls with confirmation for cancellation.
 
 ## Intentionally not implemented
 
 - No privileged helper process, installation, named-pipe server, elevated operation, or helper allowlist is enabled.
 - Approval and permission audit records remain process-local; they do not yet have durable storage or multi-user identity.
 - Live Blender validation on this host if no Blender executable is configured; JSON fixture coverage is deterministic.
-- Natural-language Blender planning, visual evaluation/revision, MPQ-native SC2 parsing, Galaxy Editor/game launch, LangGraph as the default executor, web PWA, durable approvals, private-network deployment, and a production database.
+- Natural-language Blender planning, visual evaluation/revision, MPQ-native SC2 parsing, Galaxy Editor/game launch, LangGraph as the default executor, richer monitoring/approval UX, durable approvals, private-network deployment, and a production database.
 - Unrestricted shell, arbitrary application launch, arbitrary process termination, or unrestricted GUI automation.
 
 ## Known limitations
@@ -48,8 +50,8 @@ Verification was run on Windows with the repository Python 3.12 environment.
 
 - `python -m ruff check .`: passed.
 - `python -m ruff format --check .`: passed.
-- `python -m pytest -q`: passed — 67 tests.
-- `scripts/check.ps1`: passed — Ruff formatting/linting and 67 tests.
+- `python -m pytest -q`: passed — 69 tests.
+- `scripts/check.ps1`: passed — Ruff formatting/linting and 69 tests.
 - Optional LangGraph extra remains installed and the adapter smoke-test passes; the gateway still uses the repository-owned persisted checkpoint runner.
 - Permission acceptance coverage proves automatic safe actions, paused destructive actions, lifecycle transitions, expiry, exact scope binding, one-time consumption, legacy-boolean non-bypass, and privileged fail-closed behavior.
 - Gateway integration coverage proves approval acceptance and audited execution for PC/Codex plus the disabled privileged boundary.

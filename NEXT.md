@@ -1,18 +1,13 @@
 # Next tasks
 
-M14 bounded gateway API foundations are complete for this cycle. Continue with M15 only when explicitly requested.
+M14–M17 bounded gateway/PWA foundations are complete for this cycle. Continue with M18 only when explicitly requested.
 
-## M15 — Web Chat / PWA shell
+## M18 — Secure Remote Access
 
-1. Create the mobile-first PWA shell under `apps/web` for Chat, Runs, Approvals, Artifacts, Models, and System views.
-2. Use the existing `/api/v1` contracts, bearer token, CORS allowlist, CSRF header, pagination, artifact metadata, and SSE replay without exposing raw provider services.
-3. Add browser integration tests for authenticated read/write requests, reconnecting event streams, and artifact download headers.
-4. Keep loopback binding as the default and add a documented local reverse-proxy option only after the PWA contract is stable.
-
-## M16–M17 — Operations UI
-
-- Add run monitoring, system/model health, and artifact provenance views.
-- Add mobile approval, reject, steer, pause, resume, and cancel controls with explicit confirmation.
+1. Define the private-network deployment target (Tailscale or equivalent) and allowed network identity model.
+2. Add an explicit remote bind policy that cannot expose raw Hermes, Qwen, Blender, SC2, or privileged-helper services.
+3. Add integration tests for loopback, authenticated private-network requests, rejected origins, and missing-token startup.
+4. Document key rotation, token storage, and the rollback path to loopback-only mode.
 
 ## Deferred platform validation
 

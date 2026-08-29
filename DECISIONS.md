@@ -215,3 +215,11 @@ Decision: The memory composition root may create a candidate after repeated succ
 Reason: This creates a useful M13 learning boundary without allowing one run or an unreviewed pattern to change stable behavior automatically.
 
 Date: 2026-08-29
+
+## ADR-028 — Keep the first PWA shell dependency-free
+
+Decision: Implement the initial M15 mobile chat surface as static HTML/CSS/ES modules with a manifest and service worker. It communicates only with the authenticated `/api/v1` gateway and stores only the configured gateway URL/token in browser local storage.
+
+Reason: The primary host does not require a Node toolchain for the platform foundation, and a static shell makes the UI boundary inspectable while leaving framework/build choices open for the richer M16–M17 operations surface.
+
+Date: 2026-08-29

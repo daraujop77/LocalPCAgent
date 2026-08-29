@@ -2,7 +2,7 @@
 
 ## Scope
 
-This document describes the implementation through the bounded M14 — Web Gateway foundation. The full product intent remains in MasterPlan/MasterPlan.md. M4 centralizes action levels, allowlists, scoped approval requests, audit events, and a fail-closed privileged-helper boundary. M5-M13 add bounded Blender/SC2 project boundaries, restart-recoverable graph-compatible workflows, and explicit memory/skill promotion. M14 adds an authenticated socket edge, replayable events, artifact access, and filtered API reads. Live game/editor control, a frontend PWA, and unrestricted PC control remain disabled.
+This document describes the implementation through the bounded M17 — Web Chat, Monitoring, and Mobile Approval UI foundations. The full product intent remains in MasterPlan/MasterPlan.md. M4 centralizes action levels, allowlists, scoped approval requests, audit events, and a fail-closed privileged-helper boundary. M5-M13 add bounded Blender/SC2 project boundaries, restart-recoverable graph-compatible workflows, and explicit memory/skill promotion. M14 adds an authenticated socket edge, replayable events, artifact access, and filtered API reads. M15-M17 add a dependency-free mobile shell that consumes only the gateway API. Live game/editor control, private-network deployment, and unrestricted PC control remain disabled.
 
 ## Architectural principles
 
@@ -13,7 +13,7 @@ This document describes the implementation through the bounded M14 — Web Gatew
 - Every future tool returns a structured result and declares its approval level.
 - The repository is the persistent handoff mechanism.
 
-## M5-M14 topology
+## M5-M17 topology
 
 ```text
 HTTP client / future PWA
@@ -46,6 +46,7 @@ services/gateway
           +-----------> memory (semantic/episodic/procedural JSON stores + Hermes context)
 
           +-----------> artifact catalog (metadata/download boundary)
+          +-----------> apps/web (static mobile PWA shell)
 
 shared contracts/config/logging: src/personal_ai
 ```
@@ -80,6 +81,10 @@ tests/                            unit, integration, and future e2e locations
 ### Gateway
 
 GatewayApp is the composition root. It owns settings, one PermissionService, Hermes, the workflow service, Codex handoff, the privileged boundary, memory, and the three integration providers. ThreadingHTTPServer remains the minimal development HTTP adapter. The gateway binds to 127.0.0.1 unless remote binding is explicitly enabled by configuration.
+
+### Web shell
+
+The M15–M17 web surface is a static PWA under `apps/web`. It is intentionally a client of the gateway rather than a second orchestration layer: chat, monitoring, approvals, run controls, artifacts, and health use `/api/v1` only. The shell stores its configured gateway URL and token in browser local storage; richer identity/session management is deferred to the secure remote-access milestone.
 
 ### Hermes and local Qwen
 

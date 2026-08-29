@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#111827" />
+    <meta name="description" content="Personal AI Platform local operations console" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="stylesheet" href="styles.css" />
+    <title>Personal AI Platform</title>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">LOCAL-FIRST CONTROL PLANE</p>
+          <h1>Personal AI</h1>
+        </div>
+        <span id="health-badge" class="badge badge-muted">Checking</span>
+      </header>
+
+      <main>
+        <section id="view-chat" class="view" aria-labelledby="chat-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">HERMES + LOCAL QWEN</p>
+              <h2 id="chat-title">Chat</h2>
+            </div>
+            <button id="refresh-chat-health" class="button button-ghost" type="button">Refresh</button>
+          </div>
+          <div id="chat-log" class="chat-log" aria-live="polite">
+            <div class="empty-state">Ask Hermes something to begin.</div>
+          </div>
+          <form id="chat-form" class="composer">
+            <label class="sr-only" for="chat-message">Message</label>
+            <textarea id="chat-message" rows="3" placeholder="Ask a question or describe a task..."></textarea>
+            <div class="composer-row">
+              <select id="chat-task-type" aria-label="Task type">
+                <option value="general">General</option>
+                <option value="coding">Coding</option>
+                <option value="blender">Blender</option>
+                <option value="sc2">SC2</option>
+              </select>
+              <button class="button button-primary" type="submit">Send</button>
+            </div>
+          </form>
+        </section>
+
+        <section id="view-runs" class="view hidden" aria-labelledby="runs-title">
+          <div class="section-heading">
+            <div><p class="eyebrow">DURABLE WORKFLOWS</p><h2 id="runs-title">Runs</h2></div>
+            <button class="button button-ghost" type="button" data-refresh="runs">Refresh</button>
+          </div>
+          <div id="runs-list" class="card-list"><div class="empty-state">No runs loaded.</div></div>
+        </section>
+
+        <section id="view-approvals" class="view hidden" aria-labelledby="approvals-title">
+          <div class="section-heading">
+            <div><p class="eyebrow">HUMAN CONTROL</p><h2 id="approvals-title">Approvals</h2></div>
+            <button class="button button-ghost" type="button" data-refresh="approvals">Refresh</button>
+          </div>
+          <div id="approvals-list" class="card-list"><div class="empty-state">No approvals loaded.</div></div>
+        </section>
+
+        <section id="view-artifacts" class="view hidden" aria-labelledby="artifacts-title">
+          <div class="section-heading">
+            <div><p class="eyebrow">OUTPUTS</p><h2 id="artifacts-title">Artifacts</h2></div>
+            <button class="button button-ghost" type="button" data-refresh="artifacts">Refresh</button>
+          </div>
+          <div id="artifacts-list" class="card-list"><div class="empty-state">No artifacts loaded.</div></div>
+        </section>
+
+        <section id="view-system" class="view hidden" aria-labelledby="system-title">
+          <div class="section-heading">
+            <div><p class="eyebrow">RUNTIME BOUNDARIES</p><h2 id="system-title">System</h2></div>
+            <button class="button button-ghost" type="button" data-refresh="system">Refresh</button>
+          </div>
+          <pre id="system-status" class="status-panel">Loading...</pre>
+          <div class="monitor-grid">
+            <article class="status-card"><p class="eyebrow">TOOLS</p><pre id="tools-status">Loading...</pre></article>
+            <article class="status-card"><p class="eyebrow">WORKFLOWS</p><pre id="workflows-status">Loading...</pre></article>
+            <article class="status-card"><p class="eyebrow">MODELS</p><pre id="models-status">Loading...</pre></article>
+            <article class="status-card"><p class="eyebrow">USAGE</p><pre id="usage-status">Available usage metrics depend on the configured gateway.</pre></article>
+          </div>
+          <details class="settings-card">
+            <summary>Connection settings</summary>
+            <label for="api-base">Gateway URL</label>
+            <input id="api-base" type="url" value="http://127.0.0.1:8000" />
+            <label for="api-token">Bearer token (optional on loopback)</label>
+            <input id="api-token" type="password" autocomplete="off" placeholder="PERSONAL_AI_API_TOKEN" />
+            <button id="save-settings" class="button button-primary" type="button">Save settings</button>
+          </details>
+        </section>
+      </main>
+
+      <nav class="bottom-nav" aria-label="Primary navigation">
+        <button class="nav-item active" type="button" data-view="chat">Chat</button>
+        <button class="nav-item" type="button" data-view="runs">Runs</button>
+        <button class="nav-item" type="button" data-view="approvals">Approvals</button>
+        <button class="nav-item" type="button" data-view="artifacts">Artifacts</button>
+        <button class="nav-item" type="button" data-view="system">Monitor</button>
+      </nav>
+    </div>
+    <script src="app.js" type="module"></script>
+  </body>
+</html>

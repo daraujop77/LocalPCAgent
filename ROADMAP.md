@@ -1,6 +1,6 @@
 # Roadmap
 
-Status is intentionally conservative. M0 through M4 are complete foundations. M5 through M13 are bounded local foundations with live application and full autonomy gaps called out below. M14 is the bounded gateway API foundation; the frontend and secure remote product surfaces remain planned.
+Status is intentionally conservative. M0 through M4 are complete foundations. M5 through M13 are bounded local foundations with live application and full autonomy gaps called out below. M14 through M17 are bounded gateway/UI foundations; secure remote access and live product integrations remain planned.
 
 | Milestone | Status | Scope |
 | --- | --- | --- |
@@ -19,9 +19,9 @@ Status is intentionally conservative. M0 through M4 are complete foundations. M5
 | M12 — Experience Memory | Foundation complete | Semantic/episodic stores, token-scored history lookup, Hermes context injection |
 | M13 — Skill Learning | Foundation complete | Repeated successful procedure candidate suggestions, provenance, explicit validation and promotion |
 | M14 — Web Gateway | Foundation complete | Bearer/CORS/CSRF socket edge, filtered pagination, SSE event replay, artifact metadata/download boundary |
-| M15 — Web Chat | Planned | Responsive mobile-compatible chat |
-| M16 — Monitoring Dashboard | Planned | Runs, tools, models, system usage, workflows, artifacts |
-| M17 — Mobile Approvals | Planned | Approve, reject, steer, pause, resume, cancel from phone |
+| M15 — Web Chat | Foundation complete | Dependency-free mobile PWA shell for chat, runs, approvals, artifacts, and system status |
+| M16 — Monitoring Dashboard | Foundation complete | PWA monitoring cards for runs, tools, workflows, models, system usage, and artifacts |
+| M17 — Mobile Approvals | Foundation complete | Mobile run pause/resume/retry/cancel controls and approval accept/reject controls |
 | M18 — Secure Remote Access | Planned | Private-network access with no public raw agent services |
 | M19 — Scheduled / Autonomous Jobs | Planned | Recurring work after permissions, observability, and recovery |
 | M20 — Multi-Agent Expansion | Planned | Add only if real workload proves it necessary |
