@@ -1,6 +1,6 @@
 # Roadmap
 
-Status is intentionally conservative. M0 through M3 are complete. Later milestones remain planned.
+Status is intentionally conservative. M0 through M4 are complete. Later milestones remain planned.
 
 | Milestone | Status | Scope |
 | --- | --- | --- |
@@ -8,7 +8,7 @@ Status is intentionally conservative. M0 through M3 are complete. Later mileston
 | M1 — Local AI | Complete | Hermes boundary, local Qwen client, deterministic router, local chat, model-selection logging, live Ollama/qwen3.8:27b acceptance |
 | M2 — Codex Integration | Complete | Approved observable Codex CLI handoff, working-tree observation, and post-handoff tests |
 | M3 — PC Control | Complete | Allowlisted Windows app/filesystem/process/window/screenshot/input operations |
-| M4 — Permission System | Planned | Approvals, allowlists, privileged-helper boundary |
+| M4 — Permission System | Complete | Central levels, scoped one-time approvals, validated allowlists, fail-closed privileged-helper boundary |
 | M5 — Blender Bridge | Planned | bpy/MCP inspection, working copies, preview render, artifacts |
 | M6 — Blender Autonomous Workflow | Planned | Snapshot, plan, modify, validate, render, evaluate, finalize |
 | M7 — Durable Blender Workflow | Planned | LangGraph checkpoints, retry, recovery, pause/resume/cancel |
@@ -29,7 +29,7 @@ Status is intentionally conservative. M0 through M3 are complete. Later mileston
 ## Sequencing constraints
 
 - M2 and M3 were implemented together after explicit instruction; M1 live-chat acceptance is verified against the local Ollama/qwen3.8:27b backend.
-- M2 handoffs do not commit or push. M3 host control remains local, allowlisted, workspace-bounded, non-admin, and approval-gated for level-2 actions.
+- M2 handoffs do not commit or push. M3 host control remains local, allowlisted, workspace-bounded, and non-admin. M4 centrally gates level-2/3 actions with scoped one-time approvals.
 - Do not begin serious SC2 work before Blender automation is stable.
 - Do not add multi-agent infrastructure before real workload demonstrates a need.
 - Do not expose raw Hermes, Qwen, Blender MCP, SC2 MCP, or the privileged helper publicly.

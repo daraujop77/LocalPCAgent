@@ -1,15 +1,18 @@
 # Next tasks
 
-M0, M1, M2, and M3 are complete. The next bounded milestone is M4 — Permission System. Do not begin M4 without explicit instruction.
+M0 through M4 are complete. The next bounded milestone is M5 — Blender Bridge. Do not begin M5 without explicit instruction.
 
-1. Replace the temporary `approval_granted` flags with a centralized permission-policy service and approval-request contract.
-2. Move tool/action permission levels and PC application/PowerShell allowlists into validated configuration owned by that service.
-3. Add approval lifecycle states — requested, accepted, rejected, expired, and cancelled — with correlation IDs and visible audit records.
-4. Define the constrained privileged-helper protocol; keep the main gateway non-administrator and make helper absence fail closed.
-5. Add tests proving safe actions run automatically, destructive actions pause, rejected approvals do not execute, and privileged actions cannot bypass policy.
-6. Update `TOOL_CONTRACTS.md`, `ARCHITECTURE.md`, `STATUS.md`, and `DECISIONS.md` with the verified M4 behavior.
+1. Inspect the installed Blender version, executable paths, Python environment, and any available Blender MCP server without changing a scene.
+2. Define Blender contracts for scene inspection, controlled `bpy` execution, working-copy creation, preview rendering, saving, and artifact metadata.
+3. Add M5 Blender actions to `policies/permissions.yaml` with read-only inspection automatic and every scene/file mutation centrally approval-gated.
+4. Implement a non-GUI Blender backend using `bpy`, Blender background mode, or MCP; mouse/keyboard automation remains fallback-only.
+5. Create an isolated test `.blend` fixture and always duplicate it before mutation. Never overwrite the source fixture.
+6. Implement the bounded acceptance path: inspect scene, duplicate working file, modify a cube and material, position a camera, render a preview, save the new `.blend`, and report artifacts.
+7. Add deterministic unit tests with a fake backend and an opt-in live Blender acceptance script. Verify permission denial never starts Blender.
+8. Update the handoff documents with exact M5 behavior and limitations, then stop before M6.
 
 ## Deferred validation
 
-- Run `scripts/pc-acceptance.ps1` only when an interactive Notepad check is intentionally desired.
-- A future cycle may add a live Codex fixture acceptance, but it must use an isolated test repository and explicit approval.
+- Run `scripts/pc-acceptance.ps1` only when interactive Notepad control is intentionally desired.
+- A future authenticated UI may make approval decisions; M4's local approval API is not a remote-access authorization system.
+- Durable approvals and audit storage belong with later event/workflow persistence, not M5.

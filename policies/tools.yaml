@@ -3,6 +3,8 @@ execution:
   hermes_chat: enabled_local_qwen
   codex: enabled_if_cli_available
   pc: enabled_controlled_allowlisted
+  permissions: enabled_process_local
+  privileged_helper: disabled_fail_closed
   blender: disabled_until_future_milestone
   sc2: disabled_until_future_milestone
   workflows: boundary_only

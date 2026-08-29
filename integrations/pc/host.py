@@ -72,11 +72,28 @@ class NativeWindowsPcControl:
         self,
         workspace_root: str | Path | None = None,
         allowed_applications: Sequence[str] = ("notepad.exe", "calc.exe", "mspaint.exe"),
+        allowed_powershell_verbs: Sequence[str] = (
+            "Add-Content",
+            "Copy-Item",
+            "Get-ChildItem",
+            "Get-Content",
+            "Get-Date",
+            "Get-Item",
+            "Get-Location",
+            "Get-Process",
+            "Move-Item",
+            "New-Item",
+            "Set-Content",
+            "Test-Path",
+        ),
         command_timeout_seconds: float = 30.0,
     ) -> None:
         self.workspace_root = Path(workspace_root or Path.cwd()).expanduser().resolve()
         self.allowed_applications = frozenset(
             Path(name).name.lower() for name in allowed_applications
+        )
+        self.allowed_powershell_verbs = frozenset(
+            verb.casefold() for verb in allowed_powershell_verbs
         )
         self.command_timeout_seconds = command_timeout_seconds
 
@@ -92,6 +109,7 @@ class NativeWindowsPcControl:
                 "administrator_required": False,
                 "workspace_root": str(self.workspace_root),
                 "allowed_applications": sorted(self.allowed_applications),
+                "allowed_powershell_verbs": sorted(self.allowed_powershell_verbs),
             },
         )
 
@@ -450,8 +468,7 @@ class NativeWindowsPcControl:
             reversible=False,
         )
 
-    @staticmethod
-    def _validate_powershell_script(script: str) -> None:
+    def _validate_powershell_script(self, script: str) -> None:
         if any(
             marker in script
             for marker in (
@@ -476,21 +493,7 @@ class NativeWindowsPcControl:
         match = re.match(r"^\s*([A-Za-z][A-Za-z0-9-]*)", script)
         if match is None:
             raise PcHostError("powershell_command_not_allowlisted")
-        allowed_verbs = {
-            "add-content",
-            "copy-item",
-            "get-childitem",
-            "get-content",
-            "get-date",
-            "get-item",
-            "get-location",
-            "get-process",
-            "move-item",
-            "new-item",
-            "set-content",
-            "test-path",
-        }
-        if match.group(1).lower() not in allowed_verbs:
+        if match.group(1).casefold() not in self.allowed_powershell_verbs:
             raise PcHostError("powershell_command_not_allowlisted")
         for token in script.split():
             normalized = token.strip("\"'")

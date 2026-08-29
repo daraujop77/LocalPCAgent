@@ -1,19 +1,58 @@
-levels:
-  0:
-    name: read_only
-    automatic: true
-  1:
-    name: safe_reversible
-    automatic: true
-  2:
-    name: potentially_destructive
-    automatic: false
-  3:
-    name: sensitive_or_privileged
-    automatic: false
-main_process:
-  administrator_required: false
-privileged_helper:
-  enabled: false
-  allowlisted_api_only: true
-
+{
+  "version": 1,
+  "approval_ttl_seconds": 300,
+  "levels": {
+    "0": {"name": "read_only", "automatic": true},
+    "1": {"name": "safe_reversible", "automatic": true},
+    "2": {"name": "potentially_destructive", "automatic": false},
+    "3": {"name": "sensitive_or_privileged", "automatic": false}
+  },
+  "actions": {
+    "codex.repository_handoff": {"level": 2},
+    "pc.system_info": {"level": 0},
+    "pc.list_processes": {"level": 0},
+    "pc.apps.list": {"level": 0},
+    "pc.apps.launch": {"level": 1},
+    "pc.apps.focus": {"level": 1},
+    "pc.apps.close": {"level": 2},
+    "pc.files.read": {"level": 0},
+    "pc.files.copy": {"level": 1},
+    "pc.files.move": {"level": 2},
+    "pc.files.patch": {"level": 2},
+    "pc.files.snapshot": {"level": 1},
+    "pc.shell.powershell": {"level": 2},
+    "pc.window.list": {"level": 0},
+    "pc.window.focus": {"level": 1},
+    "pc.screen.capture": {"level": 0},
+    "pc.input.click": {"level": 2},
+    "pc.input.drag": {"level": 2},
+    "pc.input.type": {"level": 2},
+    "pc.input.hotkey": {"level": 2},
+    "pc.input.scroll": {"level": 2},
+    "privileged.system.execute": {"level": 3, "privileged": true}
+  },
+  "pc": {
+    "allowed_applications": ["notepad.exe", "calc.exe", "mspaint.exe"],
+    "allowed_powershell_verbs": [
+      "Add-Content",
+      "Copy-Item",
+      "Get-ChildItem",
+      "Get-Content",
+      "Get-Date",
+      "Get-Item",
+      "Get-Location",
+      "Get-Process",
+      "Move-Item",
+      "New-Item",
+      "Set-Content",
+      "Test-Path"
+    ]
+  },
+  "main_process": {"administrator_required": false},
+  "privileged_helper": {
+    "enabled": false,
+    "transport": "windows_named_pipe",
+    "endpoint": "\\\\.\\pipe\\personal-ai-privileged",
+    "allowed_actions": []
+  }
+}

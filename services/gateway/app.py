@@ -19,6 +19,7 @@ from personal_ai.chat import ChatRequest, ChatValidationError
 from personal_ai.config import Settings
 from personal_ai.contracts import HealthStatus, ToolProvider
 from personal_ai.hermes import HermesService
+from personal_ai.permissions import PermissionService, PermissionServiceError
 from personal_ai.qwen import HttpQwenClient, ModelClient
 from personal_ai.router import ModelRouter
 from services.codex.service import (
@@ -27,6 +28,7 @@ from services.codex.service import (
     SubprocessCodexBackend,
     coding_task_from_payload,
 )
+from services.privileged_helper.service import PrivilegedHelperService
 from services.workflows.service import WorkflowService
 
 logger = logging.getLogger(__name__)
@@ -40,6 +42,8 @@ class GatewayApp:
     hermes: HermesService
     codex: CodexHandoffService
     pc: PcIntegration
+    permissions: PermissionService
+    privileged: PrivilegedHelperService
 
     @classmethod
     def create_default(
@@ -48,11 +52,13 @@ class GatewayApp:
         model_client: ModelClient | None = None,
     ) -> GatewayApp:
         resolved_settings = settings or Settings.from_env()
+        permissions = PermissionService.from_path(resolved_settings.permission_policy_path)
         pc = PcIntegration(
+            permissions,
             workspace_root=resolved_settings.pc_workspace_root,
-            allowed_applications=resolved_settings.pc_allowed_applications,
             command_timeout_seconds=resolved_settings.pc_command_timeout_seconds,
         )
+        privileged = PrivilegedHelperService.create_disabled(permissions)
         return cls(
             settings=resolved_settings,
             workflows=WorkflowService(),
@@ -62,9 +68,12 @@ class GatewayApp:
                 SubprocessCodexBackend(
                     executable=resolved_settings.codex_executable,
                     timeout_seconds=resolved_settings.codex_timeout_seconds,
-                )
+                ),
+                permissions,
             ),
             pc=pc,
+            permissions=permissions,
+            privileged=privileged,
         )
 
     def _checks(self) -> dict[str, HealthStatus]:
@@ -78,6 +87,8 @@ class GatewayApp:
             "workflows": self.workflows.health(),
             "hermes": self.hermes.health(),
             "codex": self.codex.health(),
+            "permissions": self.permissions.health(),
+            "privileged_helper": self.privileged.health(),
         }
         checks.update({provider.provider_name: provider.health() for provider in self.integrations})
         return checks
@@ -102,6 +113,14 @@ class GatewayApp:
             "codex": {
                 "capabilities": ["codex.repository_handoff"],
                 "execution": "enabled_if_cli_available",
+            },
+            "permissions": {
+                "capabilities": ["approvals.request", "approvals.decide", "permissions.inspect"],
+                "execution": "enabled_process_local",
+            },
+            "privileged_helper": {
+                "capabilities": list(self.privileged.capabilities()),
+                "execution": "disabled_fail_closed",
             },
             "providers": [
                 {
@@ -136,6 +155,24 @@ class GatewayApp:
             if method != "POST":
                 return HTTPStatus.METHOD_NOT_ALLOWED, {"error": "method_not_allowed"}
             return self._dispatch_pc(body)
+        if route == "/api/v1/approvals":
+            if method == "POST":
+                return self._dispatch_approval_create(body)
+            if method == "GET":
+                return HTTPStatus.OK, {
+                    "approvals": [item.to_dict() for item in self.permissions.list_requests()]
+                }
+            return HTTPStatus.METHOD_NOT_ALLOWED, {"error": "method_not_allowed"}
+        if route == "/api/v1/approvals/events":
+            if method != "GET":
+                return HTTPStatus.METHOD_NOT_ALLOWED, {"error": "method_not_allowed"}
+            return HTTPStatus.OK, {"events": [item.to_dict() for item in self.permissions.events()]}
+        if route.startswith("/api/v1/approvals/"):
+            return self._dispatch_approval_route(method, route, body)
+        if route == "/api/v1/privileged/invoke":
+            if method != "POST":
+                return HTTPStatus.METHOD_NOT_ALLOWED, {"error": "method_not_allowed"}
+            return self._dispatch_privileged(body)
         if method != "GET":
             return HTTPStatus.METHOD_NOT_ALLOWED, {"error": "method_not_allowed"}
         if route == "/":
@@ -152,6 +189,10 @@ class GatewayApp:
             return HTTPStatus.OK, self.health(live_only=True)
         if route == "/api/v1/tools":
             return HTTPStatus.OK, self.tool_catalog()
+        if route == "/api/v1/permissions":
+            return HTTPStatus.OK, self.permissions.policy.summary()
+        if route == "/api/v1/privileged/health":
+            return HTTPStatus.OK, self.privileged.health().to_dict()
         if route == "/api/v1/codex/health":
             check = self.codex.health()
             status = HTTPStatus.OK if check.ready else HTTPStatus.SERVICE_UNAVAILABLE
@@ -192,18 +233,20 @@ class GatewayApp:
         body: bytes | Mapping[str, object] | None,
     ) -> tuple[int, dict[str, Any]]:
         try:
-            task, approval_granted = coding_task_from_payload(self._decode_body(body))
+            task, approval_id = coding_task_from_payload(self._decode_body(body))
         except (UnicodeDecodeError, json.JSONDecodeError, CodingTaskValidationError) as exc:
             return HTTPStatus.BAD_REQUEST, {
                 "success": False,
                 "error": "invalid_request",
                 "details": str(exc),
             }
-        response = self.codex.delegate(task, approval_granted=approval_granted)
+        response = self.codex.delegate(task, approval_id=approval_id)
         if response.success:
             status = HTTPStatus.OK
-        elif response.error == "approval_required":
+        elif response.error in {"approval_required", "approval_requested"}:
             status = HTTPStatus.CONFLICT
+        elif response.error and response.error.startswith("approval_"):
+            status = HTTPStatus.FORBIDDEN
         elif response.error == "codex_unavailable":
             status = HTTPStatus.SERVICE_UNAVAILABLE
         else:
@@ -250,14 +293,146 @@ class GatewayApp:
                 "details": "parameters must be a JSON object",
             }
         result = self.pc.invoke(action.strip(), target=target, parameters=parameters)
-        status = (
-            HTTPStatus.OK
-            if result.success
-            else HTTPStatus.CONFLICT
-            if result.error == "approval_required"
-            else HTTPStatus.UNPROCESSABLE_ENTITY
-        )
+        status = self._tool_result_status(result.success, result.error)
         return status, result.to_dict()
+
+    def _dispatch_approval_create(
+        self,
+        body: bytes | Mapping[str, object] | None,
+    ) -> tuple[int, dict[str, Any]]:
+        try:
+            payload = self._mapping_body(body)
+            action = self._required_string(payload, "action")
+            target = payload.get("target")
+            parameters = payload.get("parameters", {})
+            reason = payload.get("reason", "Action requires explicit approval.")
+            requested_by = payload.get("requested_by", "gateway")
+            if target is not None and not isinstance(target, str):
+                raise ValueError("target must be a string when provided")
+            if not isinstance(parameters, Mapping):
+                raise ValueError("parameters must be a JSON object")
+            if not isinstance(reason, str) or not isinstance(requested_by, str):
+                raise ValueError("reason and requested_by must be strings")
+            request = self.permissions.request_approval(
+                action,
+                target=target,
+                parameters=parameters,
+                reason=reason,
+                requested_by=requested_by,
+            )
+        except (
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+            PermissionServiceError,
+            ValueError,
+        ) as exc:
+            return HTTPStatus.BAD_REQUEST, {
+                "success": False,
+                "error": getattr(exc, "code", "invalid_request"),
+                "details": str(exc),
+            }
+        return HTTPStatus.CREATED, request.to_dict()
+
+    def _dispatch_approval_route(
+        self,
+        method: str,
+        route: str,
+        body: bytes | Mapping[str, object] | None,
+    ) -> tuple[int, dict[str, Any]]:
+        parts = route.removeprefix("/api/v1/approvals/").split("/")
+        approval_id = parts[0]
+        try:
+            if len(parts) == 1 and method == "GET":
+                return HTTPStatus.OK, self.permissions.get(approval_id).to_dict()
+            if (
+                len(parts) != 2
+                or method != "POST"
+                or parts[1]
+                not in {
+                    "accept",
+                    "reject",
+                    "cancel",
+                }
+            ):
+                return HTTPStatus.METHOD_NOT_ALLOWED, {"error": "method_not_allowed"}
+            payload = self._mapping_body(body, allow_none=True)
+            decided_by = payload.get("decided_by", "user")
+            reason = payload.get("reason")
+            if not isinstance(decided_by, str) or (
+                reason is not None and not isinstance(reason, str)
+            ):
+                raise ValueError("decided_by and reason must be strings")
+            status = {"accept": "accepted", "reject": "rejected", "cancel": "cancelled"}[parts[1]]
+            request = self.permissions.decide(
+                approval_id,
+                status,
+                decided_by=decided_by,
+                reason=reason,
+            )
+            return HTTPStatus.OK, request.to_dict()
+        except (
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+            PermissionServiceError,
+            ValueError,
+        ) as exc:
+            code = getattr(exc, "code", "invalid_request")
+            http_status = (
+                HTTPStatus.NOT_FOUND if code == "approval_not_found" else HTTPStatus.CONFLICT
+            )
+            return http_status, {"success": False, "error": code, "details": str(exc)}
+
+    def _dispatch_privileged(
+        self,
+        body: bytes | Mapping[str, object] | None,
+    ) -> tuple[int, dict[str, Any]]:
+        try:
+            payload = self._mapping_body(body)
+            action = self._required_string(payload, "action")
+            target = payload.get("target")
+            parameters = payload.get("parameters", {})
+            if target is not None and not isinstance(target, str):
+                raise ValueError("target must be a string when provided")
+            if not isinstance(parameters, Mapping):
+                raise ValueError("parameters must be a JSON object")
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+            return HTTPStatus.BAD_REQUEST, {
+                "success": False,
+                "error": "invalid_request",
+                "details": str(exc),
+            }
+        result = self.privileged.invoke(action, target=target, parameters=parameters)
+        return self._tool_result_status(result.success, result.error), result.to_dict()
+
+    @staticmethod
+    def _tool_result_status(success: bool, error: str | None) -> HTTPStatus:
+        if success:
+            return HTTPStatus.OK
+        if error == "approval_required":
+            return HTTPStatus.CONFLICT
+        if error and (error.startswith("approval_") or error.startswith("privileged_")):
+            return HTTPStatus.FORBIDDEN
+        return HTTPStatus.UNPROCESSABLE_ENTITY
+
+    def _mapping_body(
+        self,
+        body: bytes | Mapping[str, object] | None,
+        *,
+        allow_none: bool = False,
+    ) -> Mapping[str, object]:
+        payload = self._decode_body(body)
+        if payload is None and allow_none:
+            return {}
+        if not isinstance(payload, Mapping):
+            raise ValueError("request body must be a JSON object")
+        return payload
+
+    @staticmethod
+    def _required_string(payload: Mapping[str, object], name: str) -> str:
+        value = payload.get(name)
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"{name} must be a non-empty string")
+        return value.strip()
 
     @staticmethod
     def _decode_body(body: bytes | Mapping[str, object] | None) -> object:

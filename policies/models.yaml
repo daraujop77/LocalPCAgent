@@ -5,7 +5,7 @@ specialists:
   large_context: gemini-optional
   routine_local_automation: qwen-local
 router_mode: deterministic_rules
-active_milestone: M3
+active_milestone: M4
 local_qwen:
   route_name: qwen-local
   protocol: openai_compatible_http

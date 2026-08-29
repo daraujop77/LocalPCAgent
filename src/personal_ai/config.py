@@ -53,8 +53,8 @@ class Settings:
     qwen_api_key: str | None = None
     codex_executable: str = "codex"
     codex_timeout_seconds: float = 900.0
+    permission_policy_path: str = "policies/permissions.yaml"
     pc_workspace_root: str = "."
-    pc_allowed_applications: tuple[str, ...] = ("notepad.exe", "calc.exe", "mspaint.exe")
     pc_command_timeout_seconds: float = 30.0
 
     @classmethod
@@ -85,15 +85,11 @@ class Settings:
                 values.get("PERSONAL_AI_CODEX_TIMEOUT_SECONDS", "900"),
                 name="PERSONAL_AI_CODEX_TIMEOUT_SECONDS",
             ),
-            pc_workspace_root=values.get("PERSONAL_AI_PC_WORKSPACE_ROOT", "."),
-            pc_allowed_applications=tuple(
-                item.strip()
-                for item in values.get(
-                    "PERSONAL_AI_PC_ALLOWED_APPLICATIONS",
-                    "notepad.exe,calc.exe,mspaint.exe",
-                ).split(",")
-                if item.strip()
+            permission_policy_path=values.get(
+                "PERSONAL_AI_PERMISSION_POLICY_PATH",
+                "policies/permissions.yaml",
             ),
+            pc_workspace_root=values.get("PERSONAL_AI_PC_WORKSPACE_ROOT", "."),
             pc_command_timeout_seconds=_parse_positive_float(
                 values.get("PERSONAL_AI_PC_COMMAND_TIMEOUT_SECONDS", "30"),
                 name="PERSONAL_AI_PC_COMMAND_TIMEOUT_SECONDS",

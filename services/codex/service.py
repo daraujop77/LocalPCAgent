@@ -13,11 +13,13 @@ from typing import Protocol
 from uuid import uuid4
 
 from personal_ai.contracts import (
+    ApprovalLevel,
     CodexHandoffResult,
     CodingTask,
     HealthStatus,
     TestRun,
 )
+from personal_ai.permissions import PermissionService
 
 logger = logging.getLogger(__name__)
 
@@ -145,6 +147,7 @@ class CodexHandoffService:
     """Validate, delegate, test, and record a repository coding handoff."""
 
     backend: CodexBackend
+    permissions: PermissionService
     _runs: list[dict[str, object]] | None = None
 
     def __post_init__(self) -> None:
@@ -157,8 +160,11 @@ class CodexHandoffService:
     def list_runs(self) -> list[dict[str, object]]:
         return list(self._runs or [])
 
-    def delegate(self, task: CodingTask, *, approval_granted: bool = False) -> CodexHandoffResult:
+    def delegate(self, task: CodingTask, *, approval_id: str | None = None) -> CodexHandoffResult:
         started = perf_counter()
+        action_policy = self.permissions.policy_for("codex.repository_handoff")
+        if action_policy is None:
+            raise RuntimeError("codex.repository_handoff is missing from the permission policy")
         task_id = task.task_id or uuid4().hex
         repository = Path(task.repository_path).expanduser().resolve()
         task = replace(task, task_id=task_id, repository_path=str(repository))
@@ -171,6 +177,7 @@ class CodexHandoffService:
                     started,
                     error=validation_error,
                     summary="Codex handoff rejected before execution.",
+                    approval_level=action_policy.level,
                 )
             )
 
@@ -187,17 +194,26 @@ class CodexHandoffService:
                     starting_revision=starting_revision,
                     error="starting_revision_mismatch",
                     summary="Codex handoff rejected because the repository revision changed.",
+                    approval_level=action_policy.level,
                 )
             )
-        if not approval_granted:
+        decision = self.permissions.authorize(
+            "codex.repository_handoff",
+            target=str(repository),
+            parameters=self._permission_parameters(task),
+            approval_id=approval_id,
+        )
+        if not decision.allowed:
             return self._record(
                 self._failure(
                     task,
                     started,
                     starting_revision=starting_revision,
-                    error="approval_required",
-                    summary="Repository changes require explicit handoff approval.",
+                    error=decision.error or "permission_denied",
+                    summary="Repository handoff was not authorized by the M4 permission policy.",
                     warnings=("No Codex process was started.",),
+                    approval_level=decision.level,
+                    approval=decision.approval.to_dict() if decision.approval else None,
                 )
             )
 
@@ -238,7 +254,8 @@ class CodexHandoffService:
             logs=backend_result.logs + (f"changed_files={len(changed_files)}",),
             warnings=tuple(warnings),
             error=error,
-            approval_level=task.approval_level,
+            approval_level=decision.level,
+            approval=decision.approval.to_dict() if decision.approval else None,
             duration_ms=self._duration_ms(started),
         )
         logger.info(
@@ -252,6 +269,16 @@ class CodexHandoffService:
             },
         )
         return self._record(result)
+
+    @staticmethod
+    def _permission_parameters(task: CodingTask) -> dict[str, object]:
+        return {
+            "task": task.task,
+            "starting_revision": task.starting_revision,
+            "constraints": list(task.constraints),
+            "test_command": list(task.test_command),
+            "test_timeout_seconds": task.test_timeout_seconds,
+        }
 
     @staticmethod
     def _validate_repository(repository: Path) -> str | None:
@@ -360,6 +387,8 @@ class CodexHandoffService:
         summary: str,
         starting_revision: str | None = None,
         warnings: tuple[str, ...] = (),
+        approval_level: ApprovalLevel = 2,
+        approval: Mapping[str, object] | None = None,
     ) -> CodexHandoffResult:
         return CodexHandoffResult(
             success=False,
@@ -370,7 +399,8 @@ class CodexHandoffService:
             summary=summary,
             warnings=warnings,
             error=error,
-            approval_level=task.approval_level,
+            approval_level=approval_level,
+            approval=approval,
             duration_ms=CodexHandoffService._duration_ms(started),
         )
 
@@ -387,7 +417,7 @@ class CodingTaskValidationError(ValueError):
     """Raised when an HTTP handoff payload is not safe to execute."""
 
 
-def coding_task_from_payload(payload: object) -> tuple[CodingTask, bool]:
+def coding_task_from_payload(payload: object) -> tuple[CodingTask, str | None]:
     """Parse the gateway request while keeping commands as argv, never shell text."""
 
     if not isinstance(payload, Mapping):
@@ -410,9 +440,9 @@ def coding_task_from_payload(payload: object) -> tuple[CodingTask, bool]:
     timeout = payload.get("test_timeout_seconds", 120.0)
     if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or timeout <= 0:
         raise CodingTaskValidationError("test_timeout_seconds must be greater than zero")
-    approved = payload.get("approval_granted", False)
-    if not isinstance(approved, bool):
-        raise CodingTaskValidationError("approval_granted must be a boolean")
+    approval_id = payload.get("approval_id")
+    if approval_id is not None and not isinstance(approval_id, str):
+        raise CodingTaskValidationError("approval_id must be a string when provided")
     return (
         CodingTask(
             task_id=task_id.strip(),
@@ -423,7 +453,7 @@ def coding_task_from_payload(payload: object) -> tuple[CodingTask, bool]:
             test_command=test_command,
             test_timeout_seconds=float(timeout),
         ),
-        approved,
+        approval_id.strip() if approval_id else None,
     )
 
 

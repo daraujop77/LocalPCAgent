@@ -2,48 +2,44 @@
 
 ## Active milestone
 
-M3 — PC Control (complete). M4 — Permission System is the next milestone and has not started.
+M4 — Permission System is complete. M5 — Blender Bridge has not started.
 
 ## What works
 
-- The repository is connected to GitHub `origin/main`; M0 and M1 history is preserved.
-- Python 3.12, editable installation, pytest, and Ruff are configured through `pyproject.toml` and `scripts/setup.ps1`.
-- The local development gateway starts with `scripts/dev.ps1` and binds to `127.0.0.1` by default.
-- Hermes chat uses the configured local OpenAI-compatible Qwen endpoint, with deterministic routing and structured JSON logging.
-- The default local model remains `qwen3.8:27b`; the 64K operating profile and the light-task benchmark are documented.
-- The gateway exposes readiness, discovery, chat, Codex, and PC routes.
-- `CodexHandoffService` validates Git roots, detects stale starting revisions, requires explicit approval, invokes the configured Codex CLI in an ephemeral workspace-write sandbox, observes dirty files, runs an optional argv test command without a shell, and returns a structured summary.
-- Codex handoffs are retained in a process-local `/api/v1/codex/runs` list. They do not commit or push changes.
-- `PcIntegration` exposes structured M3 actions for system/process inspection, allowlisted application launch/focus/close, workspace-bounded file read/copy/move/patch/snapshot, restricted PowerShell, window enumeration/focus, BMP screen capture, and Windows keyboard/mouse fallback input.
-- PC mutations and disruptive operations use explicit level-2 `approval_granted: true`; the provider never elevates and does not offer unrestricted shell or process control.
-- Blender and SC2 remain safe non-controlling skeletons.
-- The opt-in `scripts/pc-acceptance.ps1` exercises Notepad launch, window focus, known text input, save, read-back verification, and close. Normal automated tests never open a GUI application.
+- The gateway loads and validates `policies/permissions.yaml` at startup. It rejects missing, malformed, incomplete, or unsafe policy configuration.
+- Levels 0 and 1 execute automatically. Levels 2 and 3 create approval requests and do not invoke their backend before authorization.
+- Approvals have generated IDs and requested, accepted, rejected, cancelled, and expired states. They expire after the configured TTL, bind to the exact action/target/sanitized parameters, and are consumed once.
+- Approval requests and lifecycle events are visible through `/api/v1/approvals`, `/api/v1/approvals/{id}`, and `/api/v1/approvals/events`. They are process-local in M4.
+- Codex repository handoffs and PC actions use the shared `PermissionService`. `approval_granted: true` is ignored and cannot bypass policy.
+- PC application and PowerShell verb allowlists are owned by the validated permission policy. Workspace path restrictions and native Windows controls from M3 remain active.
+- `/api/v1/permissions` exposes the active policy summary. Health and tool discovery report the permission service and privileged-helper boundary.
+- A level-3 privileged action requires normal scoped approval and still fails closed because no elevated helper executable or transport is enabled. The gateway/main service remains non-administrator.
+- The local gateway, Hermes/Qwen boundary, observable Codex handoff, and controlled PC provider from earlier milestones remain available.
+- Blender and SC2 remain safe, non-controlling skeletons.
 
 ## Intentionally not implemented
 
-- The full M4 approval service, durable policy store, allowlist administration, and constrained privileged helper.
-- Hermes conversation history, persistent memory, streaming, authentication, and the web UI/PWA.
-- LangGraph execution, durable persistence, checkpoints, retries, pause/resume/cancel, and event storage.
-- Blender bpy/MCP/CLI control, rendering, and scene workflows.
-- SC2 project parsing, structured modification, Galaxy tooling, launching, and packaging.
-- Remote access, public raw agent services, evaluator, and skill promotion.
+- No privileged helper process, installation, named-pipe server, elevated operation, or helper allowlist is enabled.
+- Approval and event records are not durable and have no authentication or multi-user identity model.
+- M5 Blender inspection, controlled `bpy`, working copies, rendering, and artifact creation.
+- LangGraph durable workflows, memory, web PWA, remote access, and SC2 automation.
+- Unrestricted shell, arbitrary application launch, arbitrary process termination, or unrestricted GUI automation.
 
 ## Known limitations
 
-- The gateway is still a minimal standard-library development server, not a production API server.
-- Codex execution requires a locally installed and authenticated `codex` CLI. The automated suite uses a fake backend and does not invoke a live coding agent.
-- Codex handoff and workflow records are process-local and disappear on restart; no event store or durable checkpoint exists yet.
-- PC application launch is intentionally limited to the configured executable-name allowlist. The default allowlist is `notepad.exe`, `calc.exe`, and `mspaint.exe`.
-- PC file operations are constrained to `PERSONAL_AI_PC_WORKSPACE_ROOT`, which defaults to the gateway working directory. PowerShell is deliberately narrow and is not a general command runner.
-- The live Notepad acceptance requires an interactive Windows desktop and is not run automatically because it changes host GUI state.
-- The main service remains non-administrator; privileged actions are rejected until M4 defines the helper boundary.
+- Restarting the gateway clears approval requests, audit events, Codex run records, and workflow records.
+- Approval decisions are exposed by a local development API without authentication; keep the gateway loopback-only.
+- `policies/permissions.yaml` is JSON-compatible YAML so the runtime can validate it with the Python standard library. General YAML syntax is not accepted.
+- Codex execution still requires a locally installed/authenticated Codex CLI. Automated tests use a fake backend.
+- The opt-in Notepad acceptance changes desktop state and was not run automatically in this cycle.
 
 ## Verification
 
-The latest verification uses Python 3.12.0 on Windows.
+Verification was run on Windows with the repository Python 3.12 environment.
 
-- `scripts/check.ps1`: passed — Ruff format, Ruff lint, and 29 tests passed in 1.85 seconds.
-- `python -m personal_ai.dev --check`: passed — gateway, workflows, Hermes/Qwen, Codex CLI, controlled PC, Blender skeleton, and SC2 skeleton all reported ready/ok.
-- M2 fake acceptance: passed — a Git fixture was changed by the fake Codex backend, the dirty file was reported, and the post-handoff test passed.
-- M3 file/policy acceptance: passed — read, copy, patch, workspace escape rejection, approval gating, PowerShell chaining rejection, and capability discovery are covered by tests.
-- Live Notepad acceptance: available through `scripts/pc-acceptance.ps1`, not run in this cycle.
+- `python -m ruff check .`: passed.
+- `python -m ruff format --check .`: passed.
+- `python -m pytest -q`: passed — 41 tests.
+- Permission acceptance coverage proves automatic safe actions, paused destructive actions, lifecycle transitions, expiry, exact scope binding, one-time consumption, legacy-boolean non-bypass, and privileged fail-closed behavior.
+- Gateway integration coverage proves approval acceptance and audited execution for PC/Codex plus the disabled privileged boundary.
+- Live `scripts/pc-acceptance.ps1`: updated to use M4 approval IDs; not run because it intentionally controls Notepad.

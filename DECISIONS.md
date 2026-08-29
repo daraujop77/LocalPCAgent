@@ -98,8 +98,32 @@ Date: 2026-08-29
 
 ## ADR-013 — Implement M3 PC control as an allowlisted native provider
 
-Decision: Enable only a controlled NativeWindowsPcControl backend. File paths are bounded to a configured workspace, applications are executable-name allowlisted, PowerShell is restricted to a small single-command verb set, and potentially disruptive actions require an explicit approval flag. Windows APIs are preferred for windows, screenshots, and input; GUI automation remains a fallback. The provider never elevates or exposes arbitrary process termination.
+Decision: Enable only a controlled NativeWindowsPcControl backend. File paths are bounded to a configured workspace, applications are executable-name allowlisted, PowerShell is restricted to a small single-command verb set, and potentially disruptive actions require central authorization. Windows APIs are preferred for windows, screenshots, and input; GUI automation remains a fallback. The provider never elevates or exposes arbitrary process termination.
 
 Reason: M3 requires useful Windows control, but the platform must remain local-first, non-admin, and safe from unrestricted PC control. A replaceable backend also keeps normal tests deterministic and avoids opening applications during CI.
+
+Date: 2026-08-29
+
+## ADR-014 — Centralize permissions and allowlists in one validated policy
+
+Decision: Load exact action levels, PC application/PowerShell allowlists, approval TTL, non-admin constraints, and privileged-helper settings from `policies/permissions.yaml`. The file uses JSON-compatible YAML and is parsed with the Python standard library. Gateway startup fails if the policy is invalid.
+
+Reason: PC and Codex must not develop independent approval rules. A checked-in, dependency-free, fail-fast policy is inspectable by future agents and keeps environment variables from silently changing the security model.
+
+Date: 2026-08-29
+
+## ADR-015 — Make approvals exact-scope, expiring, and one-time
+
+Decision: Bind each level-2/3 approval to a canonical digest of action, target, and sanitized parameters. Accepted approvals expire, cannot change scope, and are consumed before backend execution. Boolean approval fields are ignored as authorization. M4 stores requests and audit events in process memory.
+
+Reason: A generic or reusable approval token could authorize a different destructive action. Exact scope and one-time consumption limit replay while the process-local implementation provides the M4 contract without pretending durability exists.
+
+Date: 2026-08-29
+
+## ADR-016 — Define but do not activate the privileged helper
+
+Decision: Add an importable helper service/backend protocol with a disabled default backend. Level-3 policy approval is necessary but never sufficient: helper configuration and action allowlisting must also pass. No elevated executable, installer, named-pipe server, or privileged operation is implemented in M4.
+
+Reason: The main AI service must remain non-administrator, and a placeholder helper must not become an accidental bypass. A fail-closed interface lets later work add an audited transport without weakening the current boundary.
 
 Date: 2026-08-29

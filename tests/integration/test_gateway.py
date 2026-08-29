@@ -9,14 +9,16 @@ from personal_ai.hermes import HermesService
 from personal_ai.router import ModelRouter
 from services.codex.service import CodexHandoffService
 from services.gateway.app import GatewayApp
+from services.privileged_helper.service import PrivilegedHelperService
 from services.workflows.service import WorkflowService
-from tests.support import FakeCodexBackend, FakePcBackend, FakeQwenClient
+from tests.support import FakeCodexBackend, FakePcBackend, FakeQwenClient, make_permission_service
 
 
 def make_test_app() -> GatewayApp:
     client = FakeQwenClient()
-    codex = CodexHandoffService(FakeCodexBackend())
-    pc = PcIntegration(backend=FakePcBackend())
+    permissions = make_permission_service()
+    codex = CodexHandoffService(FakeCodexBackend(), permissions)
+    pc = PcIntegration(permissions, backend=FakePcBackend())
     defaults = GatewayApp.create_default(model_client=client)
     return GatewayApp(
         settings=Settings(),
@@ -25,6 +27,8 @@ def make_test_app() -> GatewayApp:
         hermes=HermesService(client, ModelRouter()),
         codex=codex,
         pc=pc,
+        permissions=permissions,
+        privileged=PrivilegedHelperService.create_disabled(permissions),
     )
 
 
@@ -38,6 +42,8 @@ def test_gateway_health_reports_all_m0_components() -> None:
         "workflows",
         "hermes",
         "codex",
+        "permissions",
+        "privileged_helper",
         "pc",
         "blender",
         "sc2",
@@ -156,24 +162,103 @@ def test_gateway_codex_route_returns_observable_handoff(tmp_path) -> None:
     )
     app = make_test_app()
 
-    status, payload = app.dispatch(
+    request = {
+        "task_id": "gateway-handoff",
+        "repository_path": str(repo),
+        "task": "write the fixture marker",
+        "test_command": [
+            sys.executable,
+            "-c",
+            "from pathlib import Path; assert Path('codex-handoff.txt').exists()",
+        ],
+    }
+    pending_status, pending = app.dispatch(
         "POST",
         "/api/v1/codex/handoff",
-        {
-            "task_id": "gateway-handoff",
-            "repository_path": str(repo),
-            "task": "write the fixture marker",
-            "approval_granted": True,
-            "test_command": [
-                sys.executable,
-                "-c",
-                "from pathlib import Path; assert Path('codex-handoff.txt').exists()",
-            ],
-        },
+        request,
     )
+    assert pending_status == HTTPStatus.CONFLICT
+    approval_id = pending["approval"]["approval_id"]
+    decision_status, decision = app.dispatch(
+        "POST",
+        f"/api/v1/approvals/{approval_id}/accept",
+        {"reason": "integration test"},
+    )
+    assert decision_status == HTTPStatus.OK
+    assert decision["status"] == "accepted"
+
+    request["approval_id"] = approval_id
+    status, payload = app.dispatch("POST", "/api/v1/codex/handoff", request)
 
     assert status == HTTPStatus.OK
     assert payload["success"] is True
     assert payload["task_id"] == "gateway-handoff"
     assert payload["changed_files"] == ["codex-handoff.txt"]
     assert payload["tests"][0]["success"] is True
+
+
+def test_gateway_exposes_approval_lifecycle_and_audit_events() -> None:
+    app = make_test_app()
+    status, pending = app.dispatch(
+        "POST",
+        "/api/v1/approvals",
+        {
+            "action": "pc.input.type",
+            "parameters": {"text": "approved"},
+            "reason": "integration test",
+            "requested_by": "test-user",
+        },
+    )
+    assert status == HTTPStatus.CREATED
+    approval_id = pending["approval_id"]
+
+    status, accepted = app.dispatch(
+        "POST",
+        f"/api/v1/approvals/{approval_id}/accept",
+        {"decided_by": "test-user"},
+    )
+    assert status == HTTPStatus.OK
+    assert accepted["status"] == "accepted"
+
+    status, result = app.dispatch(
+        "POST",
+        "/api/v1/pc/invoke",
+        {
+            "action": "pc.input.type",
+            "parameters": {"text": "approved", "approval_id": approval_id},
+        },
+    )
+    assert status == HTTPStatus.OK
+    assert result["data"]["permission"]["automatic"] is False
+
+    status, events = app.dispatch("GET", "/api/v1/approvals/events")
+    assert status == HTTPStatus.OK
+    assert {event["event_type"] for event in events["events"]} >= {
+        "approval.requested",
+        "approval.accepted",
+        "approval.consumed",
+    }
+
+
+def test_gateway_privileged_action_fails_closed_after_approval() -> None:
+    app = make_test_app()
+    status, pending = app.dispatch(
+        "POST",
+        "/api/v1/privileged/invoke",
+        {"action": "privileged.system.execute", "parameters": {"operation": "fixture"}},
+    )
+    assert status == HTTPStatus.CONFLICT
+    approval_id = pending["data"]["permission"]["approval"]["approval_id"]
+    app.dispatch("POST", f"/api/v1/approvals/{approval_id}/accept", {})
+
+    status, result = app.dispatch(
+        "POST",
+        "/api/v1/privileged/invoke",
+        {
+            "action": "privileged.system.execute",
+            "parameters": {"operation": "fixture", "approval_id": approval_id},
+        },
+    )
+
+    assert status == HTTPStatus.FORBIDDEN
+    assert result["error"] == "privileged_helper_unavailable"

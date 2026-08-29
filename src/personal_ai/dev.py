@@ -1,4 +1,4 @@
-"""Development commands for the local M2/M3 gateway."""
+"""Development commands for the local M4 gateway."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from services.gateway.app import GatewayApp, serve
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run the Personal AI Platform M2/M3 gateway")
+    parser = argparse.ArgumentParser(description="Run the Personal AI Platform M4 gateway")
     parser.add_argument("--host", help="override the configured bind host")
     parser.add_argument("--port", type=int, help="override the configured port")
     parser.add_argument("--check", action="store_true", help="print health and exit")

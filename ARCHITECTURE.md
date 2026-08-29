@@ -2,7 +2,7 @@
 
 ## Scope
 
-This document describes the implemented M0 foundation, M1 local-AI slice, M2 Codex integration, and M3 controlled PC slice. The full product intent remains in MasterPlan/MasterPlan.md. M2 adds an observable repository handoff to the installed Codex CLI. M3 adds allowlisted Windows host operations while preserving the non-admin and approval boundaries. It does not include LangGraph durability, Blender/SC2 automation, or unrestricted PC control.
+This document describes the implementation through M4 — Permission System. The full product intent remains in MasterPlan/MasterPlan.md. M4 centralizes action levels, allowlists, scoped approval requests, audit events, and a fail-closed privileged-helper boundary. It does not include a real elevated helper, LangGraph durability, Blender/SC2 automation, or unrestricted PC control.
 
 ## Architectural principles
 
@@ -13,13 +13,18 @@ This document describes the implemented M0 foundation, M1 local-AI slice, M2 Cod
 - Every future tool returns a structured result and declares its approval level.
 - The repository is the persistent handoff mechanism.
 
-## M2/M3 topology
+## M4 topology
 
 ```text
 HTTP client / future PWA
           |
           v
 services/gateway
+          |
+          +-----------> PermissionService
+          |                 |
+          |                 +----> validated policies/permissions.yaml
+          |                 +----> process-local approvals + audit events
           |
           +-----------> HermesService
           |                 |
@@ -33,14 +38,15 @@ services/gateway
           |       local Qwen HTTP endpoint
           |
           +-----------> services/workflows (in-memory boundary)
-          +-----------> services/codex (approved CLI handoff)
-          +-----------> integrations/pc (allowlisted Windows control)
+          +-----------> services/codex (permission-gated CLI handoff)
+          +-----------> integrations/pc (policy-gated Windows control)
+          +-----------> services/privileged_helper (disabled, fail closed)
           +-----------> integrations/{blender,sc2} (safe skeletons)
 
 shared contracts/config/logging: src/personal_ai
 ```
 
-The gateway exposes health/discovery routes, one-turn chat, an approved POST /api/v1/codex/handoff route, and POST /api/v1/pc/invoke. General chat is sent to local Qwen. Specialist chat routing remains deterministic and visible; the M2 Codex boundary is a separate explicit coding handoff and does not silently mutate a repository from ordinary chat. PC operations execute only through an allowlisted provider with workspace path checks and level-2 approval gates. Blender and SC2 invocation attempts remain structured not_implemented results.
+The gateway is the composition root for one shared `PermissionService`. Codex, PC, and the privileged-helper boundary consult the same immutable action policy. General chat cannot silently trigger a repository or host mutation. Blender and SC2 invocation attempts remain structured `not_implemented` results.
 
 ## Repository layout
 
@@ -51,7 +57,8 @@ apps/web/                         future mobile-friendly PWA boundary
 services/gateway/                 local HTTP gateway
 services/workflows/               future LangGraph boundary
 services/events/                  future event-store boundary
-services/privileged-helper/       future constrained privileged boundary
+services/privileged-helper/       human-readable privileged boundary documentation
+services/privileged_helper/       importable M4 fail-closed service contract
 integrations/pc/                   controlled Windows host provider and native backend
 integrations/{blender,sc2}/         safe future-application provider skeletons
 services/codex/                     observable Codex CLI handoff service
@@ -67,7 +74,7 @@ tests/                            unit, integration, and future e2e locations
 
 ### Gateway
 
-GatewayApp is the composition root. It owns settings, Hermes, the workflow boundary, Codex handoff, and the three integration providers. ThreadingHTTPServer remains the minimal development HTTP adapter. The gateway binds to 127.0.0.1 unless remote binding is explicitly enabled by configuration.
+GatewayApp is the composition root. It owns settings, one PermissionService, Hermes, the workflow boundary, Codex handoff, the privileged boundary, and the three integration providers. ThreadingHTTPServer remains the minimal development HTTP adapter. The gateway binds to 127.0.0.1 unless remote binding is explicitly enabled by configuration.
 
 ### Hermes and local Qwen
 
@@ -93,11 +100,11 @@ The benchmark used Ollama's native chat API with a short deterministic prompt, `
 
 ### Codex handoff
 
-CodexHandoffService validates that a requested path is an existing Git root, optionally checks the caller's starting revision, requires explicit approval, invokes the configured `codex exec` CLI in an ephemeral `workspace-write` sandbox, observes the working tree, and runs the supplied argv test command without a shell. It never commits or pushes. Every handoff is retained in a process-local run list with revisions, changed files, tests, summaries, warnings, and errors. SubprocessCodexBackend is replaceable with a remote or fake backend without changing the handoff contract.
+CodexHandoffService validates that a requested path is an existing Git root, optionally checks the caller's starting revision, and asks PermissionService to authorize the exact repository/task/test scope. Only an accepted, unexpired, unused level-2 approval starts `codex exec`. The service runs in an ephemeral `workspace-write` sandbox, observes the working tree, runs supplied argv tests without a shell, and never commits or pushes.
 
 ### PC control
 
-PcIntegration is a policy boundary over NativeWindowsPcControl. Read-only inspection uses standard Windows commands and APIs. Application launch is limited to an explicit executable allowlist; file operations resolve under PERSONAL_AI_PC_WORKSPACE_ROOT; PowerShell accepts only one command from a small verb allowlist and rejects chaining, redirection, interpolation, and outside paths; window and input operations use Windows APIs. Mutating or potentially disruptive actions require `approval_granted: true` in their parameters. The provider does not elevate and does not expose arbitrary shell, process termination, or unrestricted coordinate automation.
+PcIntegration is an execution boundary over NativeWindowsPcControl and no longer owns hardcoded approval levels. PermissionService authorizes every action first. Application and PowerShell verb allowlists come from the validated policy; file operations remain bounded by PERSONAL_AI_PC_WORKSPACE_ROOT. Level-2 operations require an exact one-time approval ID. Legacy `approval_granted` parameters are stripped from the scope and never authorize execution. The provider does not elevate or expose arbitrary shell/process control.
 
 The `scripts/pc-acceptance.ps1` script is intentionally opt-in. It launches an allowlisted Notepad instance, focuses it through the window contract, types known text, saves a working file, reads it back, and closes the window. Automated tests use a fake backend for host operations and never open GUI applications.
 
@@ -109,14 +116,18 @@ WorkflowService is an in-memory health/list boundary only. It is intentionally n
 
 Each provider implements the common ToolProvider contract. PcIntegration is the first executable provider and returns ToolResult for every operation. BlenderIntegration and Sc2Integration retain the safe skeleton boundary until their dedicated milestones.
 
-### Permissions
+### Permissions and privileged boundary
 
-Permission levels 0–3 are declared in policies/permissions.yaml and represented in ToolResult.approval_level. M2/M3 enforce a local explicit approval flag for repository handoffs and level-2 PC actions. This is a narrow boundary, not the complete M4 approval service; there is still no privileged helper process. The main service must remain non-administrator.
+`PermissionPolicy` loads the checked-in JSON-compatible `policies/permissions.yaml` and validates exact levels 0–3, action assignments, PC allowlists, non-admin main-process configuration, and privileged-helper allowlists. Levels 0/1 are automatic; levels 2/3 require approval. Requests are scoped by a canonical SHA-256 digest of action, target, and sanitized parameters, expire after the policy TTL, and are consumed once. Rejected, cancelled, expired, mismatched, reused, and unknown approvals all fail closed.
+
+The M4 approval/event store is thread-safe but process-local. It is intentionally not a durable authorization system. The API exposes request and decision lifecycle for local development; loopback binding remains essential because authentication is not implemented.
+
+`PrivilegedHelperService` defines the future transport/backend contract. Its M4 backend is disabled. Policy authorization occurs before a future helper call, privileged actions must be level 3 and helper-allowlisted, and accepted approval alone is insufficient. With helper policy disabled, the request returns `privileged_helper_unavailable` without consuming the approval or invoking any transport. The main gateway never requests administrator privileges.
 
 ### Observability
 
-Logs are emitted as one JSON object per line through the standard library, including model-selection context, Codex handoff lifecycle, and PC operation lifecycle. Health payloads identify gateway, workflows, Hermes/Qwen, Codex, PC, Blender, and SC2 readiness. A future event service can consume the same structured result and lifecycle vocabulary without requiring a gateway rewrite.
+Logs are emitted as one JSON object per line through the standard library. Permission requests/decisions/consumption also create process-local structured audit events. Health identifies permissions and the disabled privileged boundary alongside gateway, workflows, Hermes/Qwen, Codex, PC, Blender, and SC2.
 
 ## Development contract
 
-The authoritative setup is pyproject.toml plus scripts/setup.ps1. The authoritative checks are scripts/check.ps1, which runs Ruff format verification, Ruff linting, and pytest. The development gateway is started with scripts/dev.ps1. The optional live M3 acceptance is scripts/pc-acceptance.ps1. The default configuration is safe for a local Windows development machine; a live Qwen endpoint is required for successful chat generation, and the Codex CLI is required only for real handoffs.
+The authoritative setup is pyproject.toml plus scripts/setup.ps1. The authoritative checks are scripts/check.ps1. The development gateway starts with scripts/dev.ps1. The optional PC acceptance now exercises the M4 approval API. A live Qwen endpoint is required for chat generation, and the Codex CLI is required only for real handoffs.

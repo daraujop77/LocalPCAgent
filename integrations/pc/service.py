@@ -1,18 +1,19 @@
-"""Controlled Windows PC integration for M3."""
+"""Controlled Windows PC integration governed by the M4 permission service."""
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 
 from integrations.pc.host import NativeWindowsPcControl, PcControlBackend, PcExecution
-from personal_ai.contracts import ApprovalLevel, HealthStatus, ToolResult
+from personal_ai.contracts import HealthStatus, ToolResult
+from personal_ai.permissions import PermissionDecision, PermissionService
 
 
 class PcIntegration:
-    """Expose allowlisted host primitives with explicit mutation boundaries."""
+    """Expose native host primitives only after centralized authorization."""
 
     provider_name = "pc"
-    _capabilities = (
+    _supported_actions = (
         "pc.system_info",
         "pc.list_processes",
         "pc.apps.list",
@@ -34,47 +35,46 @@ class PcIntegration:
         "pc.input.hotkey",
         "pc.input.scroll",
     )
-    _approval_levels: dict[str, ApprovalLevel] = {
-        "pc.system_info": 0,
-        "pc.list_processes": 0,
-        "pc.apps.list": 0,
-        "pc.apps.launch": 1,
-        "pc.apps.focus": 1,
-        "pc.apps.close": 2,
-        "pc.files.read": 0,
-        "pc.files.copy": 1,
-        "pc.files.move": 2,
-        "pc.files.patch": 2,
-        "pc.files.snapshot": 1,
-        "pc.shell.powershell": 2,
-        "pc.window.list": 0,
-        "pc.window.focus": 1,
-        "pc.screen.capture": 0,
-        "pc.input.click": 2,
-        "pc.input.drag": 2,
-        "pc.input.type": 2,
-        "pc.input.hotkey": 2,
-        "pc.input.scroll": 2,
-    }
 
     def __init__(
         self,
+        permissions: PermissionService,
+        *,
         workspace_root: str | None = None,
-        allowed_applications: Sequence[str] = ("notepad.exe", "calc.exe", "mspaint.exe"),
         command_timeout_seconds: float = 30.0,
         backend: PcControlBackend | None = None,
     ) -> None:
+        self.permissions = permissions
+        configured_actions = {
+            action for action in permissions.policy.actions if action.startswith("pc.")
+        }
+        if configured_actions != set(self._supported_actions):
+            raise ValueError("PC action policy must exactly match the supported M4 actions")
         self._backend = backend or NativeWindowsPcControl(
             workspace_root=workspace_root,
-            allowed_applications=allowed_applications,
+            allowed_applications=permissions.policy.pc.applications,
+            allowed_powershell_verbs=permissions.policy.pc.powershell_verbs,
             command_timeout_seconds=command_timeout_seconds,
         )
 
     def health(self) -> HealthStatus:
-        return self._backend.health()
+        backend = self._backend.health()
+        details = dict(backend.details)
+        details.update(
+            {
+                "permission_policy": self.permissions.policy.source,
+                "central_authorization": True,
+            }
+        )
+        return HealthStatus(
+            name=backend.name,
+            status=backend.status,
+            ready=backend.ready,
+            details=details,
+        )
 
     def capabilities(self) -> tuple[str, ...]:
-        return self._capabilities
+        return self._supported_actions
 
     def invoke(
         self,
@@ -83,40 +83,54 @@ class PcIntegration:
         target: str | None = None,
         parameters: Mapping[str, object] | None = None,
     ) -> ToolResult:
-        params = parameters or {}
-        if action not in self._approval_levels:
-            return ToolResult(
-                success=False,
-                tool=f"pc.{action}" if not action.startswith("pc.") else action,
-                action=action,
-                target=target,
-                summary=f"PC action {action} is not allowlisted.",
-                error="unsupported_action",
-                approval_level=0,
-            )
-        approval_level = self._approval_levels[action]
-        if approval_level >= 2 and params.get("approval_granted") is not True:
+        params = dict(parameters or {})
+        raw_approval_id = params.get("approval_id")
+        if raw_approval_id is not None and not isinstance(raw_approval_id, str):
             return ToolResult(
                 success=False,
                 tool=action,
                 action=action,
                 target=target,
-                summary=f"{action} requires explicit approval before execution.",
-                warnings=("No host operation was invoked.",),
-                error="approval_required",
-                reversible=action.startswith("pc.input."),
-                approval_level=approval_level,
+                summary="approval_id must be a string.",
+                error="invalid_approval_id",
+                approval_level=0,
             )
-        execution = self._backend.execute(action, target=target, parameters=params)
-        return self._to_result(action, target, approval_level, execution)
+        decision = self.permissions.authorize(
+            action,
+            target=target,
+            parameters=params,
+            approval_id=raw_approval_id,
+        )
+        if not decision.allowed:
+            return ToolResult(
+                success=False,
+                tool=action,
+                action=action,
+                target=target,
+                summary=f"{action} was not authorized by the M4 permission policy.",
+                data={"permission": decision.to_dict()},
+                warnings=("No host operation was invoked.",),
+                error=decision.error,
+                reversible=action.startswith("pc.input."),
+                approval_level=decision.level,
+            )
+        clean_parameters = self.permissions.sanitized_parameters(params)
+        execution = self._backend.execute(
+            action,
+            target=target,
+            parameters=clean_parameters,
+        )
+        return self._to_result(action, target, decision, execution)
 
     @staticmethod
     def _to_result(
         action: str,
         target: str | None,
-        approval_level: ApprovalLevel,
+        decision: PermissionDecision,
         execution: PcExecution,
     ) -> ToolResult:
+        data = dict(execution.data or {})
+        data["permission"] = decision.to_dict()
         return ToolResult(
             success=execution.success,
             tool=action,
@@ -125,11 +139,11 @@ class PcIntegration:
             summary=execution.summary,
             changed_files=execution.changed_files,
             artifacts=execution.artifacts,
-            data=dict(execution.data or {}),
+            data=data,
             logs=execution.logs,
             warnings=execution.warnings,
             error=execution.error,
             reversible=execution.reversible,
-            approval_level=approval_level,
+            approval_level=decision.level,
             duration_ms=execution.duration_ms,
         )

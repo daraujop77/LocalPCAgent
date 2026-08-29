@@ -65,7 +65,6 @@ class CodingTask:
     constraints: tuple[str, ...] = ()
     test_command: tuple[str, ...] = ()
     test_timeout_seconds: float = 120.0
-    approval_level: ApprovalLevel = 2
 
     def to_dict(self) -> dict[str, object]:
         result = asdict(self)
@@ -106,6 +105,7 @@ class CodexHandoffResult:
     warnings: tuple[str, ...] = ()
     error: str | None = None
     approval_level: ApprovalLevel = 2
+    approval: Mapping[str, object] | None = None
     duration_ms: int = 0
 
     def to_dict(self) -> dict[str, object]:
@@ -122,6 +122,7 @@ class CodexHandoffResult:
             "warnings": list(self.warnings),
             "error": self.error,
             "approval_level": self.approval_level,
+            "approval": dict(self.approval) if self.approval else None,
             "duration_ms": self.duration_ms,
         }
 

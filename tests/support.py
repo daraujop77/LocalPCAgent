@@ -4,8 +4,15 @@ from pathlib import Path
 from integrations.pc.host import PcExecution
 from personal_ai.chat import ChatMessage
 from personal_ai.contracts import HealthStatus
+from personal_ai.permissions import PermissionService
 from personal_ai.qwen import ModelReply
 from services.codex.service import CodexBackendResult
+
+POLICY_PATH = Path(__file__).parents[1] / "policies" / "permissions.yaml"
+
+
+def make_permission_service(*, clock=None) -> PermissionService:
+    return PermissionService.from_path(POLICY_PATH, clock=clock)
 
 
 class FakeQwenClient:

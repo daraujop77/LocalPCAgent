@@ -23,6 +23,34 @@ function Invoke-PcAction {
     return $response
 }
 
+function Invoke-ApprovedPcAction {
+    param(
+        [Parameter(Mandatory = $true)][hashtable]$Payload
+    )
+
+    $requestPayload = @{
+        action = $Payload.action
+        parameters = if ($Payload.parameters) { $Payload.parameters } else { @{} }
+        requested_by = "scripts/pc-acceptance.ps1"
+        reason = "Opt-in interactive M4 acceptance"
+    }
+    if ($Payload.target) {
+        $requestPayload.target = $Payload.target
+    }
+    $approval = Invoke-RestMethod `
+        -Method Post `
+        -Uri "$BaseUrl/api/v1/approvals" `
+        -ContentType "application/json" `
+        -Body ($requestPayload | ConvertTo-Json -Depth 8)
+    Invoke-RestMethod `
+        -Method Post `
+        -Uri "$BaseUrl/api/v1/approvals/$($approval.approval_id)/accept" `
+        -ContentType "application/json" `
+        -Body '{"decided_by":"interactive-acceptance-script"}' | Out-Null
+    $Payload.parameters.approval_id = $approval.approval_id
+    return Invoke-PcAction $Payload
+}
+
 $launch = Invoke-PcAction @{ 
     action = "pc.apps.launch"
     parameters = @{
@@ -44,13 +72,13 @@ Invoke-PcAction @{
     action = "pc.window.focus"
     parameters = @{ hwnd = [int]$window.hwnd }
 } | Out-Null
-Invoke-PcAction @{
+Invoke-ApprovedPcAction @{
     action = "pc.input.type"
-    parameters = @{ approval_granted = $true; text = $knownText }
+    parameters = @{ text = $knownText }
 } | Out-Null
-Invoke-PcAction @{
+Invoke-ApprovedPcAction @{
     action = "pc.input.hotkey"
-    parameters = @{ approval_granted = $true; keys = @("CTRL", "S") }
+    parameters = @{ keys = @("CTRL", "S") }
 } | Out-Null
 Start-Sleep -Seconds 1
 
@@ -59,10 +87,10 @@ if ($read.data.content -ne $knownText) {
     throw "The saved file contents did not match the known acceptance text."
 }
 
-Invoke-PcAction @{
+Invoke-ApprovedPcAction @{
     action = "pc.apps.close"
-    parameters = @{ approval_granted = $true; hwnd = [int]$window.hwnd }
+    parameters = @{ hwnd = [int]$window.hwnd }
 } | Out-Null
 
-Write-Output "M3 PC acceptance passed."
+Write-Output "M4 permission and PC acceptance passed."
 Write-Output "Controlled file: $relativePath"

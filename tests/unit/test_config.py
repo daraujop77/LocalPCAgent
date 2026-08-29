@@ -45,14 +45,14 @@ def test_settings_accept_codex_and_pc_overrides() -> None:
         {
             "PERSONAL_AI_CODEX_EXECUTABLE": "codex-test",
             "PERSONAL_AI_CODEX_TIMEOUT_SECONDS": "45",
+            "PERSONAL_AI_PERMISSION_POLICY_PATH": "config/test-permissions.yaml",
             "PERSONAL_AI_PC_WORKSPACE_ROOT": "D:/workspace",
-            "PERSONAL_AI_PC_ALLOWED_APPLICATIONS": "notepad.exe,  calc.exe",
             "PERSONAL_AI_PC_COMMAND_TIMEOUT_SECONDS": "7.5",
         }
     )
 
     assert settings.codex_executable == "codex-test"
     assert settings.codex_timeout_seconds == 45
+    assert settings.permission_policy_path == "config/test-permissions.yaml"
     assert settings.pc_workspace_root == "D:/workspace"
-    assert settings.pc_allowed_applications == ("notepad.exe", "calc.exe")
     assert settings.pc_command_timeout_seconds == 7.5
