@@ -223,3 +223,11 @@ Decision: Implement the initial M15 mobile chat surface as static HTML/CSS/ES mo
 Reason: The primary host does not require a Node toolchain for the platform foundation, and a static shell makes the UI boundary inspectable while leaving framework/build choices open for the richer M16–M17 operations surface.
 
 Date: 2026-08-29
+
+## ADR-029 — Require a private client network for remote binding
+
+Decision: Keep loopback-only binding as the default. If remote binding is enabled, require both a bearer token and an explicit valid CIDR allowlist in `PERSONAL_AI_ALLOWED_CLIENT_NETWORKS`; enforce the allowlist at the HTTP socket edge for normal requests and CORS preflight. The initial deployment target is a private overlay such as Tailscale, with no direct public exposure of upstream agent services.
+
+Reason: A token alone does not define a private deployment boundary, and exposing the gateway to the public internet would put process-local approvals and control surfaces in scope. A network allowlist provides a small, auditable M18 boundary while leaving identity, enrollment, token storage integration, and durable approvals for later work.
+
+Date: 2026-08-29

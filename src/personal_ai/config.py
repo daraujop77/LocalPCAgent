@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -40,6 +41,28 @@ def _parse_csv(value: str) -> tuple[str, ...]:
     return tuple(item.strip() for item in value.split(",") if item.strip())
 
 
+def _parse_client_networks(value: str) -> tuple[str, ...]:
+    networks = _parse_csv(value)
+    if not networks:
+        raise ValueError("PERSONAL_AI_ALLOWED_CLIENT_NETWORKS must not be empty")
+    parsed: list[str] = []
+    for network in networks:
+        try:
+            parsed_network = ipaddress.ip_network(network, strict=False)
+            if (
+                parsed_network.is_global
+                or parsed_network.is_multicast
+                or parsed_network.is_unspecified
+            ):
+                raise ValueError("network is publicly routable or reserved")
+            parsed.append(str(parsed_network))
+        except ValueError as exc:
+            raise ValueError(
+                "PERSONAL_AI_ALLOWED_CLIENT_NETWORKS must contain valid non-public IP networks"
+            ) from exc
+    return tuple(parsed)
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
     """Runtime settings for the local gateway and bounded integration services."""
@@ -52,6 +75,7 @@ class Settings:
     allow_remote: bool = False
     api_token: str | None = None
     allowed_origins: tuple[str, ...] = ()
+    allowed_client_networks: tuple[str, ...] = ("127.0.0.1/32",)
     qwen_base_url: str = "http://127.0.0.1:11434/v1"
     qwen_model: str = "qwen3.8:27b"
     qwen_timeout_seconds: float = 60.0
@@ -83,6 +107,9 @@ class Settings:
             ),
             api_token=values.get("PERSONAL_AI_API_TOKEN") or None,
             allowed_origins=_parse_csv(values.get("PERSONAL_AI_ALLOWED_ORIGINS", "")),
+            allowed_client_networks=_parse_client_networks(
+                values.get("PERSONAL_AI_ALLOWED_CLIENT_NETWORKS", "127.0.0.1/32")
+            ),
             qwen_base_url=values.get("PERSONAL_AI_QWEN_BASE_URL", "http://127.0.0.1:11434/v1"),
             qwen_model=values.get("PERSONAL_AI_QWEN_MODEL", "qwen3.8:27b"),
             qwen_timeout_seconds=_parse_positive_float(

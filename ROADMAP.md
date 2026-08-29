@@ -1,6 +1,6 @@
 # Roadmap
 
-Status is intentionally conservative. M0 through M4 are complete foundations. M5 through M13 are bounded local foundations with live application and full autonomy gaps called out below. M14 through M17 are bounded gateway/UI foundations; secure remote access and live product integrations remain planned.
+Status is intentionally conservative. M0 through M4 are complete foundations. M5 through M13 are bounded local foundations with live application and full autonomy gaps called out below. M14 through M18 are bounded gateway/UI/security foundations; live product integrations and durable identity remain planned.
 
 | Milestone | Status | Scope |
 | --- | --- | --- |
@@ -22,7 +22,7 @@ Status is intentionally conservative. M0 through M4 are complete foundations. M5
 | M15 — Web Chat | Foundation complete | Dependency-free mobile PWA shell for chat, runs, approvals, artifacts, and system status |
 | M16 — Monitoring Dashboard | Foundation complete | PWA monitoring cards for runs, tools, workflows, models, system usage, and artifacts |
 | M17 — Mobile Approvals | Foundation complete | Mobile run pause/resume/retry/cancel controls and approval accept/reject controls |
-| M18 — Secure Remote Access | Planned | Private-network access with no public raw agent services |
+| M18 — Secure Remote Access | Foundation complete | Loopback default, token-gated remote startup, explicit private-network CIDR allowlist, CORS/CSRF edge checks, and rollback documentation; Tailscale enrollment and durable identity remain deployment work |
 | M19 — Scheduled / Autonomous Jobs | Planned | Recurring work after permissions, observability, and recovery |
 | M20 — Multi-Agent Expansion | Planned | Add only if real workload proves it necessary |
 
@@ -36,4 +36,4 @@ Status is intentionally conservative. M0 through M4 are complete foundations. M5
 - M5-M6 live Blender modification/rendering requires a configured Blender executable and an explicit structured operation plan. Natural-language planning, visual evaluation, and automatic revision require a future model/evaluator boundary.
 - SC2 `.SC2Map`/`.SC2Mod` support is limited to directories and ZIP-compatible fixtures; MPQ-native parsing, Galaxy compiler integration, and game/editor execution require future audited adapters.
 - The workflow engine persists a stable graph-compatible shape and automatically recovers interrupted runs, but the optional LangGraph adapter is not the default executor until migration and crash tests exist.
-- M14 authentication is token-based and intentionally simple for a private/local boundary. Durable identity, durable approvals, frontend PWA, Tailscale policy, and public deployment remain future milestones.
+- M14-M18 authentication is token-based and intentionally simple for a private/local boundary. Remote binding requires an explicit private client-network allowlist; durable identity, durable approvals, Tailscale enrollment, and public deployment remain future milestones.

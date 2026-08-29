@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "personal-ai-platform"
-version = "0.17.0"
-description = "Local-first personal AI platform through the bounded M14 gateway"
+version = "0.18.0"
+description = "Local-first personal AI platform through the bounded M18 gateway"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = []

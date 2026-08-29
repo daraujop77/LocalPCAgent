@@ -1,6 +1,6 @@
 # Tool contracts
 
-This file is the stable M5-M17 contract for gateway clients and future agents. All mutation-capable providers must use the central permission service before invoking a backend.
+This file is the stable M5-M18 contract for gateway clients and future agents. All mutation-capable providers must use the central permission service before invoking a backend.
 
 ## Common tool result
 
@@ -193,11 +193,15 @@ Episodic records capture successful and failed runs. Semantic records are keyed 
 
 ## M14 web edge
 
-The development server binds to loopback unless remote binding is explicitly enabled. When `PERSONAL_AI_API_TOKEN` is set, API requests require `Authorization: Bearer <token>`. Remote binding refuses to start without a token. Browser requests must use an origin listed in `PERSONAL_AI_ALLOWED_ORIGINS`; browser `POST` requests additionally require `X-Personal-AI-CSRF` equal to the configured token. CORS is never wildcarded.
+The development server binds to loopback unless remote binding is explicitly enabled. When `PERSONAL_AI_API_TOKEN` is set, API requests require `Authorization: Bearer <token>`. Remote binding refuses to start without a token or a valid non-empty `PERSONAL_AI_ALLOWED_CLIENT_NETWORKS` list. Every socket peer must match one of the configured CIDR ranges; the default is `127.0.0.1/32`, and a Tailscale deployment may explicitly add `100.64.0.0/10`. Browser requests must use an origin listed in `PERSONAL_AI_ALLOWED_ORIGINS`; browser `POST` requests additionally require `X-Personal-AI-CSRF` equal to the configured token. CORS is never wildcarded.
 
 `GET /api/v1/runs/{id}/events` supports `after=<event_id>`, `event_type`, `limit`, and returns pagination metadata. `GET /api/v1/runs/{id}/events/stream` returns replayable `text/event-stream` frames and accepts `Last-Event-ID` for reconnects.
 
 `GET /api/v1/artifacts` returns bounded metadata with `artifact_id`, `path`, `name`, `content_type`, `size`, and run/workflow provenance. `GET /api/v1/artifacts/{artifact_id}` downloads only files below the configured artifact root; workflow-internal checkpoint/event files are not downloadable. Runs, approvals, approval events, memory episodes, semantic records, and skills support bounded `limit`/`offset` pages and their documented filters.
+
+## M18 secure remote access
+
+The private-network deployment target is a Windows host reachable through a private overlay such as a Tailscale tailnet. The gateway is the only exposed service; upstream Ollama, Hermes, Blender, SC2, Codex, and privileged-helper transports remain local process boundaries. Store the API token in a protected local environment/secret store, never in source control or the PWA repository. Rotate it by stopping the gateway, replacing `PERSONAL_AI_API_TOKEN`, restarting, and reopening the PWA with the new token. If remote access is not needed, set `PERSONAL_AI_ALLOW_REMOTE=false` and restart; the server then binds only to loopback. The current repository does not install or enroll Tailscale and does not provide durable user identity.
 
 ## M15-M17 web shell
 

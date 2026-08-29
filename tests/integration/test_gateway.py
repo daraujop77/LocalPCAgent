@@ -6,12 +6,14 @@ from http.client import HTTPConnection
 from http.server import ThreadingHTTPServer
 from threading import Thread
 
+import pytest
+
 from integrations.pc.service import PcIntegration
 from personal_ai.config import Settings
 from personal_ai.hermes import HermesService
 from personal_ai.router import ModelRouter
 from services.codex.service import CodexHandoffService
-from services.gateway.app import GatewayApp, GatewayRequestHandler
+from services.gateway.app import GatewayApp, GatewayRequestHandler, serve
 from services.privileged_helper.service import PrivilegedHelperService
 from services.workflows.service import WorkflowDefinition, WorkflowNode, WorkflowService
 from tests.support import FakeCodexBackend, FakePcBackend, FakeQwenClient, make_permission_service
@@ -52,6 +54,21 @@ def test_gateway_health_reports_all_m0_components() -> None:
         "sc2",
     }
     assert all(check["ready"] for check in payload["checks"].values())
+    assert payload["checks"]["gateway"]["details"]["allowed_client_networks"] == ["127.0.0.1/32"]
+
+
+def test_gateway_health_marks_invalid_remote_policy_degraded() -> None:
+    app = make_test_app()
+    app.settings = Settings(
+        allow_remote=True,
+        api_token="test-token",
+        allowed_client_networks=("0.0.0.0/0",),
+    )
+
+    payload = app.health()
+
+    assert payload["status"] == "degraded"
+    assert payload["checks"]["gateway"]["ready"] is False
 
 
 def test_gateway_exposes_discovery_without_tool_execution() -> None:
@@ -216,20 +233,35 @@ def test_remote_gateway_requires_bearer_and_csrf_tokens() -> None:
         allow_remote=True,
         api_token="test-token",
         allowed_origins=("https://pwa.example",),
+        allowed_client_networks=("100.64.0.0/10",),
     )
 
     assert app.authorize_http("GET", "/api/v1/tools", {})[0] == HTTPStatus.UNAUTHORIZED
     headers = {"Authorization": "Bearer test-token", "Origin": "https://pwa.example"}
     assert app.authorize_http("POST", "/api/v1/chat", headers)[0] == HTTPStatus.FORBIDDEN
     headers["X-Personal-AI-CSRF"] = "test-token"
-    assert app.authorize_http("POST", "/api/v1/chat", headers) is None
+    assert app.authorize_http("POST", "/api/v1/chat", headers, client_ip="100.64.12.34") is None
+    denied = app.authorize_http("POST", "/api/v1/chat", headers, client_ip="192.168.1.20")
+    assert denied is not None
+    assert denied[0] == HTTPStatus.FORBIDDEN
+    assert denied[1]["error"] == "client_network_not_allowed"
+
+
+def test_remote_gateway_requires_token_before_startup() -> None:
+    app = make_test_app()
+    app.settings = Settings(allow_remote=True)
+
+    with pytest.raises(RuntimeError, match="PERSONAL_AI_API_TOKEN"):
+        serve(app)
 
 
 def test_http_adapter_enforces_auth_and_cors() -> None:
     app = make_test_app()
     app.settings = Settings(
+        allow_remote=True,
         api_token="test-token",
         allowed_origins=("https://pwa.example",),
+        allowed_client_networks=("127.0.0.1/32",),
     )
     bound_app = app
 

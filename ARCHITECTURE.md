@@ -2,7 +2,7 @@
 
 ## Scope
 
-This document describes the implementation through the bounded M17 — Web Chat, Monitoring, and Mobile Approval UI foundations. The full product intent remains in MasterPlan/MasterPlan.md. M4 centralizes action levels, allowlists, scoped approval requests, audit events, and a fail-closed privileged-helper boundary. M5-M13 add bounded Blender/SC2 project boundaries, restart-recoverable graph-compatible workflows, and explicit memory/skill promotion. M14 adds an authenticated socket edge, replayable events, artifact access, and filtered API reads. M15-M17 add a dependency-free mobile shell that consumes only the gateway API. Live game/editor control, private-network deployment, and unrestricted PC control remain disabled.
+This document describes the implementation through the bounded M18 — Secure Remote Access foundation. The full product intent remains in MasterPlan/MasterPlan.md. M4 centralizes action levels, allowlists, scoped approval requests, audit events, and a fail-closed privileged-helper boundary. M5-M13 add bounded Blender/SC2 project boundaries, restart-recoverable graph-compatible workflows, and explicit memory/skill promotion. M14 adds an authenticated socket edge, replayable events, artifact access, and filtered API reads. M15-M17 add a dependency-free mobile shell that consumes only the gateway API. M18 adds a private-network allowlist and remote-startup guard; actual Tailscale enrollment and durable identity remain deployment work. Live game/editor control and unrestricted PC control remain disabled.
 
 ## Architectural principles
 
@@ -13,7 +13,7 @@ This document describes the implementation through the bounded M17 — Web Chat,
 - Every future tool returns a structured result and declares its approval level.
 - The repository is the persistent handoff mechanism.
 
-## M5-M17 topology
+## M5-M18 topology
 
 ```text
 HTTP client / future PWA
@@ -82,9 +82,11 @@ tests/                            unit, integration, and future e2e locations
 
 GatewayApp is the composition root. It owns settings, one PermissionService, Hermes, the workflow service, Codex handoff, the privileged boundary, memory, and the three integration providers. ThreadingHTTPServer remains the minimal development HTTP adapter. The gateway binds to 127.0.0.1 unless remote binding is explicitly enabled by configuration.
 
+Remote binding is intended only behind a private network such as a Tailscale tailnet. `PERSONAL_AI_ALLOW_REMOTE=true` requires `PERSONAL_AI_API_TOKEN` and a non-empty `PERSONAL_AI_ALLOWED_CLIENT_NETWORKS` list. Every socket peer, including CORS preflight requests, must fall inside one of those CIDR ranges; the default list contains only `127.0.0.1/32`. The gateway exposes only its bounded API routes and never binds Hermes, Qwen, Blender, SC2, Codex, or the privileged helper as separate public services. Set `PERSONAL_AI_ALLOW_REMOTE=false` to roll back immediately to loopback-only mode.
+
 ### Web shell
 
-The M15–M17 web surface is a static PWA under `apps/web`. It is intentionally a client of the gateway rather than a second orchestration layer: chat, monitoring, approvals, run controls, artifacts, and health use `/api/v1` only. The shell stores its configured gateway URL and token in browser local storage; richer identity/session management is deferred to the secure remote-access milestone.
+The M15–M17 web surface is a static PWA under `apps/web`. It is intentionally a client of the gateway rather than a second orchestration layer: chat, monitoring, approvals, run controls, artifacts, and health use `/api/v1` only. The shell stores its configured gateway URL and token in browser local storage; richer identity/session management remains future work after the M18 gateway-side boundary.
 
 ### Hermes and local Qwen
 
@@ -142,7 +144,7 @@ Each provider implements the common ToolProvider contract. PC remains the contro
 
 `PermissionPolicy` loads the checked-in JSON-compatible `policies/permissions.yaml` and validates exact levels 0–3, action assignments, PC allowlists, non-admin main-process configuration, and privileged-helper allowlists. Levels 0/1 are automatic; levels 2/3 require approval. Requests are scoped by a canonical SHA-256 digest of action, target, and sanitized parameters, expire after the policy TTL, and are consumed once. Rejected, cancelled, expired, mismatched, reused, and unknown approvals all fail closed.
 
-The M4 approval/event store is thread-safe but process-local. It is intentionally not a durable authorization system. The API exposes request and decision lifecycle for local development. Remote binding additionally requires a bearer token, and browser origins/writes are constrained by the M14 socket policy; durable identity and approval storage remain future work.
+The M4 approval/event store is thread-safe but process-local. It is intentionally not a durable authorization system. The API exposes request and decision lifecycle for local development. Remote binding additionally requires a bearer token and an explicit private client-network allowlist, and browser origins/writes are constrained by the M14 socket policy; durable identity and approval storage remain future work.
 
 `PrivilegedHelperService` defines the future transport/backend contract. Its M4 backend is disabled. Policy authorization occurs before a future helper call, privileged actions must be level 3 and helper-allowlisted, and accepted approval alone is insufficient. With helper policy disabled, the request returns `privileged_helper_unavailable` without consuming the approval or invoking any transport. The main gateway never requests administrator privileges.
 

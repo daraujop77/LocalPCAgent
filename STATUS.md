@@ -2,7 +2,7 @@
 
 ## Active milestone
 
-M17 — Web Chat, Monitoring, and Mobile Approval UI foundations are complete. M5–M16 reflect their verified bounded scope; M18 — Secure Remote Access is next.
+M18 — Secure Remote Access foundation is complete. M5–M17 reflect their verified bounded scope; M19 — Scheduled / Autonomous Jobs is next.
 
 ## What works
 
@@ -24,6 +24,7 @@ M17 — Web Chat, Monitoring, and Mobile Approval UI foundations are complete. M
 - MemoryService persists semantic facts, append-only episodic execution records, Hermes history context, and versioned procedural skill candidates. Repeated successful workflow procedures can suggest an unpromoted candidate; explicit validation and promotion remain required.
 - `/api/v1/blender/invoke`, `/api/v1/sc2/invoke`, `/api/v1/workflows`, `/api/v1/runs`, run controls, filtered memory endpoints, `/api/v1/artifacts`, artifact downloads, and SSE event replay are available through the local gateway.
 - The HTTP edge supports optional bearer authentication, CORS origin allowlisting, CSRF protection for browser writes, and refuses remote startup without an API token.
+- Remote binding additionally requires a valid non-empty `PERSONAL_AI_ALLOWED_CLIENT_NETWORKS` CIDR allowlist. Socket peers and CORS preflight requests outside the allowlist are rejected; loopback-only mode remains the default.
 - `apps/web` contains a dependency-free mobile PWA shell for chat, runs, approvals, artifacts, and system status using only the `/api/v1` gateway boundary.
 - The PWA also exposes bounded monitoring cards for tools, workflows, models, health, usage status, and artifacts, plus explicit mobile run controls with confirmation for cancellation.
 
@@ -32,13 +33,14 @@ M17 — Web Chat, Monitoring, and Mobile Approval UI foundations are complete. M
 - No privileged helper process, installation, named-pipe server, elevated operation, or helper allowlist is enabled.
 - Approval and permission audit records remain process-local; they do not yet have durable storage or multi-user identity.
 - Live Blender validation on this host if no Blender executable is configured; JSON fixture coverage is deterministic.
-- Natural-language Blender planning, visual evaluation/revision, MPQ-native SC2 parsing, Galaxy Editor/game launch, LangGraph as the default executor, richer monitoring/approval UX, durable approvals, private-network deployment, and a production database.
+- Natural-language Blender planning, visual evaluation/revision, MPQ-native SC2 parsing, Galaxy Editor/game launch, LangGraph as the default executor, richer monitoring/approval UX, durable approvals/identity, Tailscale enrollment, scheduled jobs, and a production database.
 - Unrestricted shell, arbitrary application launch, arbitrary process termination, or unrestricted GUI automation.
 
 ## Known limitations
 
 - Restarting the gateway clears approval requests, audit events, and Codex run records; interrupted workflow runs are recovered after definitions are registered, while workflow state/events and memory records remain local files.
-- The local default has no token for convenience; set `PERSONAL_AI_API_TOKEN` and `PERSONAL_AI_ALLOWED_ORIGINS` before any remote or browser deployment.
+- The local default has no token for convenience; set `PERSONAL_AI_API_TOKEN`, `PERSONAL_AI_ALLOWED_ORIGINS`, and an explicit private `PERSONAL_AI_ALLOWED_CLIENT_NETWORKS` list before remote deployment. The checked-in example includes the Tailscale CGNAT range as an opt-in example; it is not active by default.
+- Tailscale is not installed or enrolled on this host, so M18 supplies the gateway-side policy only. Enroll the host in a private network and verify its exact CIDR/ACL policy before enabling remote binding.
 - `policies/permissions.yaml` is JSON-compatible YAML so the runtime can validate it with the Python standard library. General YAML syntax is not accepted.
 - Codex execution still requires a locally installed/authenticated Codex CLI. Automated tests use a fake backend.
 - The opt-in Notepad acceptance changes desktop state and was not run automatically in this cycle.
@@ -50,8 +52,8 @@ Verification was run on Windows with the repository Python 3.12 environment.
 
 - `python -m ruff check .`: passed.
 - `python -m ruff format --check .`: passed.
-- `python -m pytest -q`: passed — 69 tests.
-- `scripts/check.ps1`: passed — Ruff formatting/linting and 69 tests.
+- `python -m pytest -q`: passed — 72 tests.
+- `scripts/check.ps1`: passed — Ruff formatting/linting and 72 tests.
 - Optional LangGraph extra remains installed and the adapter smoke-test passes; the gateway still uses the repository-owned persisted checkpoint runner.
 - Permission acceptance coverage proves automatic safe actions, paused destructive actions, lifecycle transitions, expiry, exact scope binding, one-time consumption, legacy-boolean non-bypass, and privileged fail-closed behavior.
 - Gateway integration coverage proves approval acceptance and audited execution for PC/Codex plus the disabled privileged boundary.

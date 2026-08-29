@@ -10,4 +10,4 @@ Example local static server:
 py -3.12 -m http.server 4173 --directory apps/web
 ```
 
-Keep raw Hermes, Qwen, Blender, SC2, and privileged-helper services private; the PWA uses only the `/api/v1` gateway boundary.
+Keep raw Hermes, Qwen, Blender, SC2, Codex, and privileged-helper services private; the PWA uses only the `/api/v1` gateway boundary. If the gateway is later reached through Tailscale, configure its API token and approved client CIDR before enabling remote binding.

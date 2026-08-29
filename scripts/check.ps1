@@ -5,7 +5,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $venvPython = Join-Path $repoRoot ".venv\Scripts\python.exe"
 
 if (-not (Test-Path -LiteralPath $venvPython)) {
-    Write-Error "M5-M13 environment not found. Run .\scripts\setup.ps1 first."
+    Write-Error "M5-M18 environment not found. Run .\scripts\setup.ps1 first."
     exit 1
 }
 

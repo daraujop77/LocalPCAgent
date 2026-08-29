@@ -2,7 +2,7 @@
 
 This repository is the persistent handoff point for the local-first Personal AI Platform described in [`MasterPlan/MasterPlan.md`](MasterPlan/MasterPlan.md).
 
-The repository now contains the bounded implementation through M17 — Web Chat, Monitoring, and Mobile Approval UI foundations. The Python runtime remains dependency-light on the Windows host. Codex handoffs, Blender/SC2 mutations, and destructive PC actions use centrally configured, scoped, expiring, one-time approvals. The main process remains non-administrator and the privileged-helper boundary fails closed. Live Blender/SC2 application validation is environment-dependent; GUI automation and game/editor launching remain disabled.
+The repository now contains the bounded implementation through the M18 Secure Remote Access foundation. The Python runtime remains dependency-light on the Windows host. Codex handoffs, Blender/SC2 mutations, and destructive PC actions use centrally configured, scoped, expiring, one-time approvals. The main process remains non-administrator and the privileged-helper boundary fails closed. Live Blender/SC2 application validation is environment-dependent; GUI automation and game/editor launching remain disabled.
 
 ## Quick start on Windows
 
@@ -74,15 +74,15 @@ Run the opt-in Notepad acceptance only when the local gateway is running and GUI
 .\scripts\pc-acceptance.ps1
 ```
 
-Environment overrides use the `PERSONAL_AI_` prefix. Supported values include `HOST`, `PORT`, `ENVIRONMENT`, `LOG_LEVEL`, `ALLOW_REMOTE`, the Qwen and Codex settings, `PERMISSION_POLICY_PATH`, the PC settings, `BLENDER_EXECUTABLE`, `BLENDER_COMMAND_TIMEOUT_SECONDS`, `SC2_WORKSPACE_ROOT`, `ARTIFACT_ROOT`, `MEMORY_ROOT`, and `WORKFLOW_STORAGE_ROOT`. Tool levels and allowlists live in the validated permission policy, not environment variables. Remote binding is disabled by default.
+Environment overrides use the `PERSONAL_AI_` prefix. Supported values include `HOST`, `PORT`, `ENVIRONMENT`, `LOG_LEVEL`, `ALLOW_REMOTE`, `API_TOKEN`, `ALLOWED_ORIGINS`, `ALLOWED_CLIENT_NETWORKS`, the Qwen and Codex settings, `PERMISSION_POLICY_PATH`, the PC settings, `BLENDER_EXECUTABLE`, `BLENDER_COMMAND_TIMEOUT_SECONDS`, `SC2_WORKSPACE_ROOT`, `ARTIFACT_ROOT`, `MEMORY_ROOT`, and `WORKFLOW_STORAGE_ROOT`. Tool levels and allowlists live in the validated permission policy, not environment variables. Remote binding is disabled by default.
 
-## M5-M17 local platform
+## M5-M18 local platform
 
 The gateway exposes structured Blender and SC2 provider boundaries at `/api/v1/blender/invoke` and `/api/v1/sc2/invoke`. Blender uses background CLI execution when `PERSONAL_AI_BLENDER_EXECUTABLE` is available and supports JSON scene fixtures for deterministic development. SC2 works with bounded project directories and ZIP-compatible working copies. Both integrations preserve sources and require central approval for mutations.
 
 Durable workflow runs are available through `/api/v1/workflows`, `/api/v1/runs`, and the run control endpoints. Checkpoints and event history are stored under `artifacts/workflows/`; run event replay is also available as an SSE stream at `/api/v1/runs/{id}/events/stream`. Artifact metadata and downloads are exposed beneath `/api/v1/artifacts` and remain bounded to the configured artifact root. Semantic, episodic, and procedural memory is stored under `memory/`; repeated successful procedures can create unpromoted candidate skills, while explicit validation and promotion remain required.
 
-When `PERSONAL_AI_API_TOKEN` is set, the HTTP adapter requires a bearer token. Remote binding refuses to start without one. Browser origins must be listed in `PERSONAL_AI_ALLOWED_ORIGINS`, and browser write requests must include `X-Personal-AI-CSRF` matching the configured token. Keep the default loopback binding for local development.
+When `PERSONAL_AI_API_TOKEN` is set, the HTTP adapter requires a bearer token. Remote binding refuses to start without one or a valid non-empty `PERSONAL_AI_ALLOWED_CLIENT_NETWORKS` CIDR list. Browser origins must be listed in `PERSONAL_AI_ALLOWED_ORIGINS`, and browser write requests must include `X-Personal-AI-CSRF` matching the configured token. Keep the default loopback binding for local development. For a future Tailscale deployment, explicitly add the approved tailnet CIDR (for example `100.64.0.0/10`) and keep upstream Ollama, Hermes, Blender, SC2, Codex, and privileged-helper services off the network.
 
 ## Handoff documents
 

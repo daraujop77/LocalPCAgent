@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hmac
+import ipaddress
 import json
 import logging
 from collections.abc import Mapping
@@ -36,6 +37,18 @@ from services.workflows.definitions import blender_workflow, sc2_workflow
 from services.workflows.service import WorkflowService
 
 logger = logging.getLogger(__name__)
+
+
+def _valid_client_networks(networks: tuple[str, ...]) -> bool:
+    if not networks:
+        return False
+    try:
+        return all(
+            not parsed.is_global and not parsed.is_multicast and not parsed.is_unspecified
+            for parsed in (ipaddress.ip_network(network, strict=False) for network in networks)
+        )
+    except ValueError:
+        return False
 
 
 @dataclass(slots=True)
@@ -111,7 +124,13 @@ class GatewayApp:
             "gateway": HealthStatus(
                 name="gateway",
                 status="ok",
-                ready=not self.settings.allow_remote or bool(self.settings.api_token),
+                ready=(
+                    not self.settings.allow_remote
+                    or (
+                        bool(self.settings.api_token)
+                        and _valid_client_networks(self.settings.allowed_client_networks)
+                    )
+                ),
                 details={
                     "bind": self.settings.host if self.settings.allow_remote else "127.0.0.1",
                     "port": self.settings.port,
@@ -119,6 +138,7 @@ class GatewayApp:
                     if self.settings.api_token
                     else "none_local_only",
                     "allowed_origins": list(self.settings.allowed_origins),
+                    "allowed_client_networks": list(self.settings.allowed_client_networks),
                 },
             ),
             "workflows": self.workflows.health(),
@@ -145,12 +165,40 @@ class GatewayApp:
             "checks": {name: check.to_dict() for name, check in checks.items()},
         }
 
+    def client_network_allowed(self, client_ip: str | None) -> bool:
+        """Return whether a socket peer is inside the configured private network set."""
+
+        if not self.settings.allow_remote or client_ip is None:
+            return True
+        try:
+            address = ipaddress.ip_address(client_ip)
+            return any(
+                address in parsed
+                for parsed in (
+                    ipaddress.ip_network(network, strict=False)
+                    for network in self.settings.allowed_client_networks
+                )
+                if not parsed.is_global and not parsed.is_multicast and not parsed.is_unspecified
+            )
+        except ValueError:
+            return False
+
     def authorize_http(
-        self, method: str, path: str, headers: Mapping[str, str]
+        self,
+        method: str,
+        path: str,
+        headers: Mapping[str, str],
+        *,
+        client_ip: str | None = None,
     ) -> tuple[int, dict[str, object]] | None:
-        """Apply the M14 token, origin, and browser-write checks at the socket edge."""
+        """Apply token, origin, browser-write, and private-network checks at the edge."""
 
         route = urlsplit(path).path
+        if not self.client_network_allowed(client_ip):
+            return HTTPStatus.FORBIDDEN, {
+                "success": False,
+                "error": "client_network_not_allowed",
+            }
         if route in {"/", "/health", "/health/live", "/health/ready", "/api/v1/health"}:
             return None
         token = self.settings.api_token
@@ -952,6 +1000,13 @@ class GatewayRequestHandler(BaseHTTPRequestHandler):
         self._handle("POST")
 
     def do_OPTIONS(self) -> None:  # noqa: N802 - required by BaseHTTPRequestHandler
+        if not self.app.client_network_allowed(self.client_address[0]):
+            self._send_json(
+                HTTPStatus.FORBIDDEN,
+                {"success": False, "error": "client_network_not_allowed"},
+                {key: value for key, value in self.headers.items()},
+            )
+            return
         origin = self.headers.get("Origin")
         if origin and origin in self.app.settings.allowed_origins:
             self.send_response(HTTPStatus.NO_CONTENT)
@@ -967,7 +1022,12 @@ class GatewayRequestHandler(BaseHTTPRequestHandler):
 
     def _handle(self, method: str) -> None:
         headers = {key: value for key, value in self.headers.items()}
-        denied = self.app.authorize_http(method, self.path, headers)
+        denied = self.app.authorize_http(
+            method,
+            self.path,
+            headers,
+            client_ip=self.client_address[0],
+        )
         if denied is not None:
             self._send_json(denied[0], denied[1], headers)
             return
@@ -1060,6 +1120,13 @@ def serve(app: GatewayApp) -> None:
 
     if app.settings.allow_remote and not app.settings.api_token:
         raise RuntimeError("PERSONAL_AI_API_TOKEN is required before remote binding is enabled")
+    if app.settings.allow_remote:
+        if not app.settings.allowed_client_networks:
+            raise RuntimeError("PERSONAL_AI_ALLOWED_CLIENT_NETWORKS must not be empty")
+        if not _valid_client_networks(app.settings.allowed_client_networks):
+            raise RuntimeError(
+                "PERSONAL_AI_ALLOWED_CLIENT_NETWORKS must contain valid non-public IP networks"
+            )
     bind_host = app.settings.host if app.settings.allow_remote else "127.0.0.1"
     bound_app = app
 
