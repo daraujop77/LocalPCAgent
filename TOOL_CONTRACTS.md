@@ -110,7 +110,7 @@ GET /models
 POST /chat/completions
 ~~~
 
-The default is http://127.0.0.1:11434/v1 with model qwen3.8:27b. Configure PERSONAL_AI_QWEN_BASE_URL, PERSONAL_AI_QWEN_MODEL, PERSONAL_AI_QWEN_TIMEOUT_SECONDS, PERSONAL_AI_QWEN_HEALTH_TIMEOUT_SECONDS, and optional PERSONAL_AI_QWEN_API_KEY.
+The default is http://127.0.0.1:11434/v1 with model qwen3.8:27b. Configure PERSONAL_AI_QWEN_BASE_URL, PERSONAL_AI_QWEN_MODEL, PERSONAL_AI_QWEN_TIMEOUT_SECONDS, PERSONAL_AI_QWEN_HEALTH_TIMEOUT_SECONDS, and optional PERSONAL_AI_QWEN_API_KEY. Context size is not part of the OpenAI-compatible request contract; explicit Ollama context profiles must be selected through a model alias or a future native Ollama transport.
 
 ## Workflow boundary
 

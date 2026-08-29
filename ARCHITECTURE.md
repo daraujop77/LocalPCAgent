@@ -71,9 +71,21 @@ HermesService owns one-turn conversational handling. It validates a minimal chat
 
 The default endpoint is http://127.0.0.1:11434/v1, compatible with Ollama. The default M1 model is qwen3.8:27b, which Ollama publishes with a 256K context window and therefore satisfies the installed Hermes runtime's 64K minimum. qwen3:8b and qwen3.5:9b remain installed as optional legacy models on the inspected host. The endpoint and model are configurable through PERSONAL_AI_QWEN_BASE_URL and PERSONAL_AI_QWEN_MODEL.
 
+The host benchmark recommends a 64K runtime profile for normal Qwen3.8 operation. A 128K profile completed successfully, but it moved part of the model off the GPU and was materially slower on warm requests. Ollama's OpenAI-compatible API does not expose context-size selection; an explicit 64K or 128K profile therefore requires an Ollama Modelfile alias or a native Ollama API path. The current repository client remains transport-compatible and does not silently claim a context size it has not configured.
+
 The upstream Hermes Agent runtime is installed user-scoped under %LOCALAPPDATA%\\hermes (currently C:\\Users\\mrdea\\AppData\\Local\\hermes) and configured independently of this repository. M1 verifies that upstream Hermes can complete a one-shot prompt through Ollama/qwen3.8:27b. HermesService remains this repository's stable gateway boundary so later sessions can replace or embed the runtime without changing the HTTP contract.
 
 The qwen3.8 Flash-Next preview is intentionally skipped for this Windows/AMD host. Its Ollama local tag is an MLX-oriented 125B preview with approximately 113 GB of model data, while the host's supported local acceleration path is the Windows AMD/ROCm path. Revisit only if a compatible runtime and hardware budget are explicitly established.
+
+### Local model benchmark
+
+The benchmark used Ollama's native chat API with a short deterministic prompt, `think=false`, and `num_predict=64`. Process memory was sampled from the Ollama processes; VRAM and loaded-model size came from Ollama's `/api/ps` endpoint. These results measure context-profile overhead and short-request speed, not full 64K/128K document comprehension.
+
+| Profile | Warm latency | Output speed | Ollama loaded model / VRAM | Peak private process memory | Result |
+| --- | ---: | ---: | ---: | ---: | --- |
+| qwen3.8:27b, 64K | 228 ms | ~49 tok/s | 16.33 GB / 16.33 GB | 21.16 GB | Recommended primary profile; full GPU residency observed |
+| qwen3.8:27b, 128K | 1,195 ms | ~16 tok/s | 18.48 GB / 14.03 GB | 23.05 GB | Works, but partial CPU offload and lower speed |
+| qwen3:8b, 32K | 127 ms | ~55 tok/s request latency | 9.28 GB / 9.28 GB | 9.64 GB | Recommended light-task candidate; not the Hermes 64K default |
 
 ### Workflows
 

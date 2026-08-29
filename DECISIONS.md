@@ -79,3 +79,11 @@ Decision: Use qwen3.8:27b as the repository and Hermes default local model. Keep
 Reason: The requested qwen3.8:27b model is available through Ollama, reports a 256K context window, and meets Hermes's 64K minimum. The Flash-Next preview is an MLX-oriented 125B model with approximately 113 GB of local data, which is not a practical target for this host's Windows/AMD runtime.
 
 Date: 2026-08-29
+
+## ADR-011 — Prefer 64K for Qwen3.8 and use Qwen3 8B for light tasks
+
+Decision: Treat a 64K Qwen3.8:27B runtime profile as the recommended primary operating point. Keep 128K available for explicit long-context requests only. Use the already-installed qwen3:8b as the light-task candidate at a 32K profile; do not make it the Hermes default because its published context window is below the 64K Hermes baseline.
+
+Reason: Both Qwen3.8 profiles completed on the Windows/AMD host, but the 128K profile reduced warm short-request speed from 228 ms to 1,195 ms, moved approximately 2.3 GB of loaded model footprint off VRAM, and increased peak private process memory from 21.16 GB to 23.05 GB. qwen3:8b completed the light-task check in 127 ms warm with 9.64 GB peak private process memory. The benchmark used a short prompt, so 128K remains an explicit capacity option rather than a claim about full-document quality.
+
+Date: 2026-08-29

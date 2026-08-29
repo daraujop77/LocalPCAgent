@@ -23,6 +23,8 @@ M1 — Local AI (complete).
 - Health checks report gateway, workflows, Hermes/Qwen, PC, Blender, and SC2 readiness.
 - PC, Blender, and SC2 remain non-controlling skeletons.
 - Local fake-model tests cover the HTTP protocol, Hermes, routing, fallback, validation, and unavailable-backend behavior.
+- Qwen3.8 context benchmark passed at 64K and 128K through Ollama's native API; 64K is the recommended primary profile and 128K is reserved for explicit long-context work.
+- qwen3:8b light-task benchmark passed at a 32K profile; it is a candidate for routine tasks, not the Hermes default.
 
 ## Intentionally not implemented
 
@@ -41,6 +43,7 @@ M1 — Local AI (complete).
 - Specialist routes are observable fallbacks to Qwen until their providers are added in later milestones.
 - The gateway is a minimal standard-library development server, not a production API server.
 - Workflow state is process-local and empty on restart.
+- The OpenAI-compatible Ollama API does not expose context-size selection; explicit 64K/128K profiles require an Ollama Modelfile alias or native API integration. The benchmark used the native API directly.
 
 ## Verification
 
@@ -55,3 +58,5 @@ The latest verification is recorded after the M1 checks run. It uses Python 3.12
 - live upstream Hermes one-shot: passed — qwen3.8:27b returned HERMES_QWEN38_OK.
 - live gateway health/discovery: passed — all checks returned ready/ok; PC, Blender, and SC2 remained disabled_in_m1.
 - live gateway chat smoke test: passed — qwen3.8:27b returned GATEWAY_QWEN38_OK through POST /api/v1/chat in 1.67 seconds.
+- context benchmark: passed — qwen3.8:27b accepted 65,536 and 131,072 context profiles; 64K warm latency was 228 ms and 128K warm latency was 1,195 ms.
+- light-model benchmark: passed — qwen3:8b accepted a 32,768 context profile with 127 ms warm latency and 9.64 GB peak private Ollama process memory.
