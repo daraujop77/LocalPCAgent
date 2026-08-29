@@ -2,7 +2,7 @@
 
 This repository is the persistent handoff point for the local-first Personal AI Platform described in [`MasterPlan/MasterPlan.md`](MasterPlan/MasterPlan.md).
 
-The repository now contains M0 — Foundation and M1 — Local AI. The Python runtime is intentionally small and dependency-light on the Windows host. M1 provides a Hermes conversational boundary, deterministic routing, and an OpenAI-compatible local Qwen client. It does not yet include Codex delegation, LangGraph durability, Blender/SC2 automation, or unrestricted PC control.
+The repository now contains M0 — Foundation, M1 — Local AI, M2 — Codex Integration, and M3 — PC Control. The Python runtime is intentionally small and dependency-light on the Windows host. M2 provides an explicit, observable Codex repository handoff. M3 provides allowlisted, workspace-bounded Windows operations. LangGraph durability, Blender/SC2 automation, the full permission service, and unrestricted PC control remain future work.
 
 ## Quick start on Windows
 
@@ -33,7 +33,29 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/v1/chat `
   -Body '{"message":"Hello","task_type":"general"}'
 ```
 
-Environment overrides use the `PERSONAL_AI_` prefix. Supported values are `HOST`, `PORT`, `ENVIRONMENT`, `LOG_LEVEL`, `ALLOW_REMOTE`, `QWEN_BASE_URL`, `QWEN_MODEL`, `QWEN_TIMEOUT_SECONDS`, `QWEN_HEALTH_TIMEOUT_SECONDS`, and `QWEN_API_KEY`. Remote binding is disabled by default. A local API key is optional and is never logged.
+Example approved Codex handoff:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/v1/codex/handoff `
+  -ContentType "application/json" `
+  -Body '{"repository_path":"D:/work/repository","task":"Implement the requested change","test_command":["py","-m","pytest","-q"],"approval_granted":true}'
+```
+
+Example read-only PC operation:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/v1/pc/invoke `
+  -ContentType "application/json" `
+  -Body '{"action":"pc.system_info","parameters":{}}'
+```
+
+Run the opt-in Notepad acceptance only when the local gateway is running and GUI interaction is wanted:
+
+```powershell
+.\scripts\pc-acceptance.ps1
+```
+
+Environment overrides use the `PERSONAL_AI_` prefix. Supported values are `HOST`, `PORT`, `ENVIRONMENT`, `LOG_LEVEL`, `ALLOW_REMOTE`, `QWEN_BASE_URL`, `QWEN_MODEL`, `QWEN_TIMEOUT_SECONDS`, `QWEN_HEALTH_TIMEOUT_SECONDS`, `QWEN_API_KEY`, `CODEX_EXECUTABLE`, `CODEX_TIMEOUT_SECONDS`, `PC_WORKSPACE_ROOT`, `PC_ALLOWED_APPLICATIONS`, and `PC_COMMAND_TIMEOUT_SECONDS`. Remote binding is disabled by default. A local API key is optional and is never logged.
 
 ## Handoff documents
 
@@ -46,4 +68,4 @@ Future agents should read these files before making changes:
 - [`TOOL_CONTRACTS.md`](TOOL_CONTRACTS.md) — structured contracts and safety boundaries;
 - [`ROADMAP.md`](ROADMAP.md) — milestone status.
 
-Do not begin M2 unless explicitly instructed.
+Future agents should continue with the bounded tasks in `NEXT.md`; do not begin M4 without explicit instruction.

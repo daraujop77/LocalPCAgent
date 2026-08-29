@@ -2,7 +2,7 @@
 
 ## Scope
 
-This document describes the implemented M0 foundation and M1 local-AI slice, plus the boundaries that later milestones must preserve. The full product intent remains in MasterPlan/MasterPlan.md. M1 connects a Hermes-style conversational boundary to a configurable OpenAI-compatible local Qwen endpoint. It does not yet include Codex delegation, LangGraph durability, Blender/SC2 automation, or unrestricted PC control.
+This document describes the implemented M0 foundation, M1 local-AI slice, M2 Codex integration, and M3 controlled PC slice. The full product intent remains in MasterPlan/MasterPlan.md. M2 adds an observable repository handoff to the installed Codex CLI. M3 adds allowlisted Windows host operations while preserving the non-admin and approval boundaries. It does not include LangGraph durability, Blender/SC2 automation, or unrestricted PC control.
 
 ## Architectural principles
 
@@ -13,7 +13,7 @@ This document describes the implemented M0 foundation and M1 local-AI slice, plu
 - Every future tool returns a structured result and declares its approval level.
 - The repository is the persistent handoff mechanism.
 
-## M1 topology
+## M2/M3 topology
 
 ```text
 HTTP client / future PWA
@@ -33,12 +33,14 @@ services/gateway
           |       local Qwen HTTP endpoint
           |
           +-----------> services/workflows (in-memory boundary)
-          +-----------> integrations/{pc,blender,sc2} (safe skeletons)
+          +-----------> services/codex (approved CLI handoff)
+          +-----------> integrations/pc (allowlisted Windows control)
+          +-----------> integrations/{blender,sc2} (safe skeletons)
 
 shared contracts/config/logging: src/personal_ai
 ```
 
-The gateway exposes health/discovery routes and a minimal POST /api/v1/chat route. General chat is sent to the local Qwen provider. Specialist task types are routed deterministically and fall back to Qwen because Codex/Grok/Gemini providers are not yet wired. PC, Blender, and SC2 invocation attempts return a structured not_implemented result and perform no host-side action.
+The gateway exposes health/discovery routes, one-turn chat, an approved POST /api/v1/codex/handoff route, and POST /api/v1/pc/invoke. General chat is sent to local Qwen. Specialist chat routing remains deterministic and visible; the M2 Codex boundary is a separate explicit coding handoff and does not silently mutate a repository from ordinary chat. PC operations execute only through an allowlisted provider with workspace path checks and level-2 approval gates. Blender and SC2 invocation attempts remain structured not_implemented results.
 
 ## Repository layout
 
@@ -50,12 +52,14 @@ services/gateway/                 local HTTP gateway
 services/workflows/               future LangGraph boundary
 services/events/                  future event-store boundary
 services/privileged-helper/       future constrained privileged boundary
-integrations/{pc,blender,sc2}/    safe provider skeletons
+integrations/pc/                   controlled Windows host provider and native backend
+integrations/{blender,sc2}/         safe future-application provider skeletons
+services/codex/                     observable Codex CLI handoff service
 agents/                           future routing/evaluation/specialists
 skills/                           future promoted procedures
 memory/                           future semantic/episodic/procedural stores
 policies/                         checked-in model/tool/permission defaults
-src/personal_ai/                  shared M0/M1 Python foundation
+src/personal_ai/                  shared Python contracts, config, logging, and model boundary
 tests/                            unit, integration, and future e2e locations
 ```
 
@@ -63,7 +67,7 @@ tests/                            unit, integration, and future e2e locations
 
 ### Gateway
 
-GatewayApp is the composition root. It owns settings, Hermes, the workflow boundary, and the three integration providers. ThreadingHTTPServer remains the minimal development HTTP adapter. The gateway binds to 127.0.0.1 unless remote binding is explicitly enabled by configuration.
+GatewayApp is the composition root. It owns settings, Hermes, the workflow boundary, Codex handoff, and the three integration providers. ThreadingHTTPServer remains the minimal development HTTP adapter. The gateway binds to 127.0.0.1 unless remote binding is explicitly enabled by configuration.
 
 ### Hermes and local Qwen
 
@@ -87,22 +91,32 @@ The benchmark used Ollama's native chat API with a short deterministic prompt, `
 | qwen3.8:27b, 128K | 1,195 ms | ~16 tok/s | 18.48 GB / 14.03 GB | 23.05 GB | Works, but partial CPU offload and lower speed |
 | qwen3:8b, 32K | 127 ms | ~55 tok/s request latency | 9.28 GB / 9.28 GB | 9.64 GB | Recommended light-task candidate; not the Hermes 64K default |
 
+### Codex handoff
+
+CodexHandoffService validates that a requested path is an existing Git root, optionally checks the caller's starting revision, requires explicit approval, invokes the configured `codex exec` CLI in an ephemeral `workspace-write` sandbox, observes the working tree, and runs the supplied argv test command without a shell. It never commits or pushes. Every handoff is retained in a process-local run list with revisions, changed files, tests, summaries, warnings, and errors. SubprocessCodexBackend is replaceable with a remote or fake backend without changing the handoff contract.
+
+### PC control
+
+PcIntegration is a policy boundary over NativeWindowsPcControl. Read-only inspection uses standard Windows commands and APIs. Application launch is limited to an explicit executable allowlist; file operations resolve under PERSONAL_AI_PC_WORKSPACE_ROOT; PowerShell accepts only one command from a small verb allowlist and rejects chaining, redirection, interpolation, and outside paths; window and input operations use Windows APIs. Mutating or potentially disruptive actions require `approval_granted: true` in their parameters. The provider does not elevate and does not expose arbitrary shell, process termination, or unrestricted coordinate automation.
+
+The `scripts/pc-acceptance.ps1` script is intentionally opt-in. It launches an allowlisted Notepad instance, focuses it through the window contract, types known text, saves a working file, reads it back, and closes the window. Automated tests use a fake backend for host operations and never open GUI applications.
+
 ### Workflows
 
 WorkflowService is an in-memory health/list boundary only. It is intentionally not a fake LangGraph implementation. Durable state, checkpoints, retries, approvals, and cancellation belong to a later milestone.
 
 ### Integrations
 
-Each provider implements the common ToolProvider contract. SkeletonIntegration makes the safety boundary explicit: capabilities are discoverable, but no PC, Blender, or SC2 operation is enabled in M1.
+Each provider implements the common ToolProvider contract. PcIntegration is the first executable provider and returns ToolResult for every operation. BlenderIntegration and Sc2Integration retain the safe skeleton boundary until their dedicated milestones.
 
 ### Permissions
 
-Permission levels 0–3 are declared in policies/permissions.yaml and represented in ToolResult.approval_level. M1 has no PC/Blender/SC2 mutation endpoint and no privileged helper process. The main service must remain non-administrator.
+Permission levels 0–3 are declared in policies/permissions.yaml and represented in ToolResult.approval_level. M2/M3 enforce a local explicit approval flag for repository handoffs and level-2 PC actions. This is a narrow boundary, not the complete M4 approval service; there is still no privileged helper process. The main service must remain non-administrator.
 
 ### Observability
 
-Logs are emitted as one JSON object per line through the standard library, including model-selection context. Health payloads identify gateway, workflows, Hermes/Qwen readiness, and all integrations. A future event service can consume the same structured result and lifecycle vocabulary without requiring a gateway rewrite.
+Logs are emitted as one JSON object per line through the standard library, including model-selection context, Codex handoff lifecycle, and PC operation lifecycle. Health payloads identify gateway, workflows, Hermes/Qwen, Codex, PC, Blender, and SC2 readiness. A future event service can consume the same structured result and lifecycle vocabulary without requiring a gateway rewrite.
 
 ## Development contract
 
-The authoritative setup is pyproject.toml plus scripts/setup.ps1. The authoritative checks are scripts/check.ps1, which runs Ruff format verification, Ruff linting, and pytest. The development gateway is started with scripts/dev.ps1. The default configuration is safe for a local Windows development machine; a live Qwen endpoint is required for successful chat generation.
+The authoritative setup is pyproject.toml plus scripts/setup.ps1. The authoritative checks are scripts/check.ps1, which runs Ruff format verification, Ruff linting, and pytest. The development gateway is started with scripts/dev.ps1. The optional live M3 acceptance is scripts/pc-acceptance.ps1. The default configuration is safe for a local Windows development machine; a live Qwen endpoint is required for successful chat generation, and the Codex CLI is required only for real handoffs.

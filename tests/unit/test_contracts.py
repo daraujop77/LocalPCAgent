@@ -9,6 +9,7 @@ def test_tool_result_is_structured_and_json_friendly() -> None:
         target="sample",
         summary="Inspected sample.",
         changed_files=("sample.txt",),
+        data={"size": 12},
         warnings=("This is a test.",),
         approval_level=0,
     )
@@ -17,4 +18,5 @@ def test_tool_result_is_structured_and_json_friendly() -> None:
 
     assert payload["success"] is True
     assert payload["changed_files"] == ["sample.txt"]
+    assert payload["data"] == {"size": 12}
     assert payload["warnings"] == ["This is a test."]

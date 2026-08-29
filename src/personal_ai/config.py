@@ -38,7 +38,7 @@ def _parse_positive_float(value: str, *, name: str) -> float:
 
 @dataclass(frozen=True, slots=True)
 class Settings:
-    """Runtime settings for the development gateway and local Qwen client."""
+    """Runtime settings for the development gateway, Codex, and controlled PC host."""
 
     app_name: str = "personal-ai-platform"
     host: str = "127.0.0.1"
@@ -51,6 +51,11 @@ class Settings:
     qwen_timeout_seconds: float = 60.0
     qwen_health_timeout_seconds: float = 2.0
     qwen_api_key: str | None = None
+    codex_executable: str = "codex"
+    codex_timeout_seconds: float = 900.0
+    pc_workspace_root: str = "."
+    pc_allowed_applications: tuple[str, ...] = ("notepad.exe", "calc.exe", "mspaint.exe")
+    pc_command_timeout_seconds: float = 30.0
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None) -> Settings:
@@ -75,4 +80,22 @@ class Settings:
                 name="PERSONAL_AI_QWEN_HEALTH_TIMEOUT_SECONDS",
             ),
             qwen_api_key=values.get("PERSONAL_AI_QWEN_API_KEY") or None,
+            codex_executable=values.get("PERSONAL_AI_CODEX_EXECUTABLE", "codex"),
+            codex_timeout_seconds=_parse_positive_float(
+                values.get("PERSONAL_AI_CODEX_TIMEOUT_SECONDS", "900"),
+                name="PERSONAL_AI_CODEX_TIMEOUT_SECONDS",
+            ),
+            pc_workspace_root=values.get("PERSONAL_AI_PC_WORKSPACE_ROOT", "."),
+            pc_allowed_applications=tuple(
+                item.strip()
+                for item in values.get(
+                    "PERSONAL_AI_PC_ALLOWED_APPLICATIONS",
+                    "notepad.exe,calc.exe,mspaint.exe",
+                ).split(",")
+                if item.strip()
+            ),
+            pc_command_timeout_seconds=_parse_positive_float(
+                values.get("PERSONAL_AI_PC_COMMAND_TIMEOUT_SECONDS", "30"),
+                name="PERSONAL_AI_PC_COMMAND_TIMEOUT_SECONDS",
+            ),
         )

@@ -87,3 +87,19 @@ Decision: Treat a 64K Qwen3.8:27B runtime profile as the recommended primary ope
 Reason: Both Qwen3.8 profiles completed on the Windows/AMD host, but the 128K profile reduced warm short-request speed from 228 ms to 1,195 ms, moved approximately 2.3 GB of loaded model footprint off VRAM, and increased peak private process memory from 21.16 GB to 23.05 GB. qwen3:8b completed the light-task check in 127 ms warm with 9.64 GB peak private process memory. The benchmark used a short prompt, so 128K remains an explicit capacity option rather than a claim about full-document quality.
 
 Date: 2026-08-29
+
+## ADR-012 — Make Codex handoffs explicit, observable, and uncommitted
+
+Decision: Add a CodexHandoffService with a replaceable backend. A handoff requires an existing Git root, may pin a starting revision, requires explicit approval, runs the configured Codex CLI in an ephemeral workspace-write sandbox, runs an argv test command without a shell, records dirty files and results, and never commits or pushes.
+
+Reason: M2 needs a clean boundary between Hermes and serious repository work while keeping changes inspectable and preventing an agent handoff from becoming an invisible or automatically published mutation.
+
+Date: 2026-08-29
+
+## ADR-013 — Implement M3 PC control as an allowlisted native provider
+
+Decision: Enable only a controlled NativeWindowsPcControl backend. File paths are bounded to a configured workspace, applications are executable-name allowlisted, PowerShell is restricted to a small single-command verb set, and potentially disruptive actions require an explicit approval flag. Windows APIs are preferred for windows, screenshots, and input; GUI automation remains a fallback. The provider never elevates or exposes arbitrary process termination.
+
+Reason: M3 requires useful Windows control, but the platform must remain local-first, non-admin, and safe from unrestricted PC control. A replaceable backend also keeps normal tests deterministic and avoids opening applications during CI.
+
+Date: 2026-08-29

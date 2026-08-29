@@ -5,7 +5,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $venvPython = Join-Path $repoRoot ".venv\Scripts\python.exe"
 
 if (-not (Test-Path -LiteralPath $venvPython)) {
-    Write-Error "M0 environment not found. Run .\scripts\setup.ps1 first."
+    Write-Error "M3 environment not found. Run .\scripts\setup.ps1 first."
     exit 1
 }
 
@@ -16,4 +16,3 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 & $venvPython -m pytest
 exit $LASTEXITCODE
-

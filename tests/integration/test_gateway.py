@@ -1,21 +1,30 @@
 import json
+import subprocess
+import sys
 from http import HTTPStatus
 
+from integrations.pc.service import PcIntegration
 from personal_ai.config import Settings
 from personal_ai.hermes import HermesService
 from personal_ai.router import ModelRouter
+from services.codex.service import CodexHandoffService
 from services.gateway.app import GatewayApp
 from services.workflows.service import WorkflowService
-from tests.support import FakeQwenClient
+from tests.support import FakeCodexBackend, FakePcBackend, FakeQwenClient
 
 
 def make_test_app() -> GatewayApp:
     client = FakeQwenClient()
+    codex = CodexHandoffService(FakeCodexBackend())
+    pc = PcIntegration(backend=FakePcBackend())
+    defaults = GatewayApp.create_default(model_client=client)
     return GatewayApp(
         settings=Settings(),
         workflows=WorkflowService(),
-        integrations=GatewayApp.create_default(model_client=client).integrations,
+        integrations=(pc, defaults.integrations[1], defaults.integrations[2]),
         hermes=HermesService(client, ModelRouter()),
+        codex=codex,
+        pc=pc,
     )
 
 
@@ -24,7 +33,15 @@ def test_gateway_health_reports_all_m0_components() -> None:
 
     assert status == HTTPStatus.OK
     assert payload["status"] == "ok"
-    assert set(payload["checks"]) == {"gateway", "workflows", "hermes", "pc", "blender", "sc2"}
+    assert set(payload["checks"]) == {
+        "gateway",
+        "workflows",
+        "hermes",
+        "codex",
+        "pc",
+        "blender",
+        "sc2",
+    }
     assert all(check["ready"] for check in payload["checks"].values())
 
 
@@ -32,9 +49,14 @@ def test_gateway_exposes_discovery_without_tool_execution() -> None:
     status, payload = make_test_app().dispatch("GET", "/api/v1/tools")
 
     assert status == HTTPStatus.OK
-    assert payload["mode"] == "discovery-and-chat"
+    assert payload["mode"] == "controlled-local-execution"
     assert payload["hermes"]["execution"] == "enabled_local_qwen"
-    assert all(provider["execution"] == "disabled_in_m1" for provider in payload["providers"])
+    assert payload["codex"]["execution"] == "enabled_if_cli_available"
+    assert payload["providers"][0]["execution"] == "enabled_controlled_allowlisted"
+    assert all(
+        provider["execution"] == "disabled_until_future_milestone"
+        for provider in payload["providers"][1:]
+    )
 
 
 def test_gateway_chat_returns_hermes_response() -> None:
@@ -84,3 +106,74 @@ def test_gateway_rejects_mutating_http_methods_in_m0() -> None:
 
     assert status == HTTPStatus.METHOD_NOT_ALLOWED
     assert payload == {"error": "method_not_allowed"}
+
+
+def test_gateway_pc_route_requires_approval_for_mutation() -> None:
+    app = make_test_app()
+    status, payload = app.dispatch(
+        "POST",
+        "/api/v1/pc/invoke",
+        {"action": "pc.input.type", "parameters": {"text": "blocked"}},
+    )
+
+    assert status == HTTPStatus.CONFLICT
+    assert payload["error"] == "approval_required"
+    assert payload["approval_level"] == 2
+
+
+def test_gateway_pc_route_returns_structured_success() -> None:
+    app = make_test_app()
+    status, payload = app.dispatch(
+        "POST",
+        "/api/v1/pc/invoke",
+        {
+            "action": "pc.system_info",
+            "parameters": {},
+        },
+    )
+
+    assert status == HTTPStatus.OK
+    assert payload["success"] is True
+    assert payload["tool"] == "pc.system_info"
+    assert payload["data"]["action"] == "pc.system_info"
+
+
+def test_gateway_codex_route_returns_observable_handoff(tmp_path) -> None:
+    repo = tmp_path / "fixture-repo"
+    repo.mkdir()
+    (repo / "README.md").write_text("fixture\n", encoding="utf-8")
+    subprocess.run(["git", "init", str(repo)], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(repo), "config", "user.name", "Test"], check=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "config", "user.email", "test@example.invalid"],
+        check=True,
+    )
+    subprocess.run(["git", "-C", str(repo), "add", "README.md"], check=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "commit", "-m", "fixture"],
+        check=True,
+        capture_output=True,
+    )
+    app = make_test_app()
+
+    status, payload = app.dispatch(
+        "POST",
+        "/api/v1/codex/handoff",
+        {
+            "task_id": "gateway-handoff",
+            "repository_path": str(repo),
+            "task": "write the fixture marker",
+            "approval_granted": True,
+            "test_command": [
+                sys.executable,
+                "-c",
+                "from pathlib import Path; assert Path('codex-handoff.txt').exists()",
+            ],
+        },
+    )
+
+    assert status == HTTPStatus.OK
+    assert payload["success"] is True
+    assert payload["task_id"] == "gateway-handoff"
+    assert payload["changed_files"] == ["codex-handoff.txt"]
+    assert payload["tests"][0]["success"] is True

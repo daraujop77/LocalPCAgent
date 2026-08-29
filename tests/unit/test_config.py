@@ -38,3 +38,21 @@ def test_settings_accept_explicit_environment_overrides() -> None:
     assert settings.qwen_timeout_seconds == 12.5
     assert settings.qwen_health_timeout_seconds == 0.5
     assert settings.qwen_api_key == "local-secret"
+
+
+def test_settings_accept_codex_and_pc_overrides() -> None:
+    settings = Settings.from_env(
+        {
+            "PERSONAL_AI_CODEX_EXECUTABLE": "codex-test",
+            "PERSONAL_AI_CODEX_TIMEOUT_SECONDS": "45",
+            "PERSONAL_AI_PC_WORKSPACE_ROOT": "D:/workspace",
+            "PERSONAL_AI_PC_ALLOWED_APPLICATIONS": "notepad.exe,  calc.exe",
+            "PERSONAL_AI_PC_COMMAND_TIMEOUT_SECONDS": "7.5",
+        }
+    )
+
+    assert settings.codex_executable == "codex-test"
+    assert settings.codex_timeout_seconds == 45
+    assert settings.pc_workspace_root == "D:/workspace"
+    assert settings.pc_allowed_applications == ("notepad.exe", "calc.exe")
+    assert settings.pc_command_timeout_seconds == 7.5

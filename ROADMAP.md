@@ -1,13 +1,13 @@
 # Roadmap
 
-Status is intentionally conservative. M0 and M1 are complete. Later milestones remain planned.
+Status is intentionally conservative. M0 through M3 are complete. Later milestones remain planned.
 
 | Milestone | Status | Scope |
 | --- | --- | --- |
 | M0 — Foundation | Complete | Repository, Python tooling, contracts, safe skeletons, health, tests, handoff docs |
 | M1 — Local AI | Complete | Hermes boundary, local Qwen client, deterministic router, local chat, model-selection logging, live Ollama/qwen3.8:27b acceptance |
-| M2 — Codex Integration | Planned | Observable Codex handoff and test-repository coding loop |
-| M3 — PC Control | Planned | Structured Windows app/filesystem/process/screenshot operations |
+| M2 — Codex Integration | Complete | Approved observable Codex CLI handoff, working-tree observation, and post-handoff tests |
+| M3 — PC Control | Complete | Allowlisted Windows app/filesystem/process/window/screenshot/input operations |
 | M4 — Permission System | Planned | Approvals, allowlists, privileged-helper boundary |
 | M5 — Blender Bridge | Planned | bpy/MCP inspection, working copies, preview render, artifacts |
 | M6 — Blender Autonomous Workflow | Planned | Snapshot, plan, modify, validate, render, evaluate, finalize |
@@ -28,7 +28,8 @@ Status is intentionally conservative. M0 and M1 are complete. Later milestones r
 
 ## Sequencing constraints
 
-- Do not start M2 until explicitly instructed; M1 live-chat acceptance is verified against the local Ollama/qwen3.8:27b backend.
+- M2 and M3 were implemented together after explicit instruction; M1 live-chat acceptance is verified against the local Ollama/qwen3.8:27b backend.
+- M2 handoffs do not commit or push. M3 host control remains local, allowlisted, workspace-bounded, non-admin, and approval-gated for level-2 actions.
 - Do not begin serious SC2 work before Blender automation is stable.
 - Do not add multi-agent infrastructure before real workload demonstrates a need.
 - Do not expose raw Hermes, Qwen, Blender MCP, SC2 MCP, or the privileged helper publicly.

@@ -3,14 +3,19 @@ from integrations.pc.service import PcIntegration
 from integrations.sc2.service import Sc2Integration
 
 
-def test_integration_skeletons_are_ready_but_do_not_control_hosts() -> None:
+def test_pc_is_controlled_while_future_integrations_remain_disabled() -> None:
     providers = (PcIntegration(), BlenderIntegration(), Sc2Integration())
 
     assert {provider.provider_name for provider in providers} == {"pc", "blender", "sc2"}
-    assert all(provider.health().ready for provider in providers)
-    assert all(provider.health().details["control_enabled"] is False for provider in providers)
+    assert providers[0].health().details["control_enabled"] is True
+    assert providers[1].health().details["control_enabled"] is False
+    assert providers[2].health().details["control_enabled"] is False
 
     result = providers[0].invoke("pc.shell.powershell")
     assert result.success is False
-    assert result.error == "not_implemented"
-    assert result.approval_level == 0
+    assert result.error == "approval_required"
+    assert result.approval_level == 2
+
+    future_result = providers[1].invoke("blender.execute_bpy")
+    assert future_result.success is False
+    assert future_result.error == "not_implemented"

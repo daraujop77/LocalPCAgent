@@ -21,6 +21,12 @@ from personal_ai.contracts import HealthStatus, ToolProvider
 from personal_ai.hermes import HermesService
 from personal_ai.qwen import HttpQwenClient, ModelClient
 from personal_ai.router import ModelRouter
+from services.codex.service import (
+    CodexHandoffService,
+    CodingTaskValidationError,
+    SubprocessCodexBackend,
+    coding_task_from_payload,
+)
 from services.workflows.service import WorkflowService
 
 logger = logging.getLogger(__name__)
@@ -32,6 +38,8 @@ class GatewayApp:
     workflows: WorkflowService
     integrations: tuple[ToolProvider, ...]
     hermes: HermesService
+    codex: CodexHandoffService
+    pc: PcIntegration
 
     @classmethod
     def create_default(
@@ -40,11 +48,23 @@ class GatewayApp:
         model_client: ModelClient | None = None,
     ) -> GatewayApp:
         resolved_settings = settings or Settings.from_env()
+        pc = PcIntegration(
+            workspace_root=resolved_settings.pc_workspace_root,
+            allowed_applications=resolved_settings.pc_allowed_applications,
+            command_timeout_seconds=resolved_settings.pc_command_timeout_seconds,
+        )
         return cls(
             settings=resolved_settings,
             workflows=WorkflowService(),
-            integrations=(PcIntegration(), BlenderIntegration(), Sc2Integration()),
+            integrations=(pc, BlenderIntegration(), Sc2Integration()),
             hermes=HermesService(model_client or HttpQwenClient(resolved_settings), ModelRouter()),
+            codex=CodexHandoffService(
+                SubprocessCodexBackend(
+                    executable=resolved_settings.codex_executable,
+                    timeout_seconds=resolved_settings.codex_timeout_seconds,
+                )
+            ),
+            pc=pc,
         )
 
     def _checks(self) -> dict[str, HealthStatus]:
@@ -57,6 +77,7 @@ class GatewayApp:
             ),
             "workflows": self.workflows.health(),
             "hermes": self.hermes.health(),
+            "codex": self.codex.health(),
         }
         checks.update({provider.provider_name: provider.health() for provider in self.integrations})
         return checks
@@ -76,13 +97,21 @@ class GatewayApp:
 
     def tool_catalog(self) -> dict[str, Any]:
         return {
-            "mode": "discovery-and-chat",
+            "mode": "controlled-local-execution",
             "hermes": {"capabilities": ["hermes.chat"], "execution": "enabled_local_qwen"},
+            "codex": {
+                "capabilities": ["codex.repository_handoff"],
+                "execution": "enabled_if_cli_available",
+            },
             "providers": [
                 {
                     "provider": provider.provider_name,
                     "capabilities": list(provider.capabilities()),
-                    "execution": "disabled_in_m1",
+                    "execution": (
+                        "enabled_controlled_allowlisted"
+                        if provider.provider_name == "pc"
+                        else "disabled_until_future_milestone"
+                    ),
                 }
                 for provider in self.integrations
             ],
@@ -99,6 +128,14 @@ class GatewayApp:
             if method != "POST":
                 return HTTPStatus.METHOD_NOT_ALLOWED, {"error": "method_not_allowed"}
             return self._dispatch_chat(body)
+        if route == "/api/v1/codex/handoff":
+            if method != "POST":
+                return HTTPStatus.METHOD_NOT_ALLOWED, {"error": "method_not_allowed"}
+            return self._dispatch_codex(body)
+        if route == "/api/v1/pc/invoke":
+            if method != "POST":
+                return HTTPStatus.METHOD_NOT_ALLOWED, {"error": "method_not_allowed"}
+            return self._dispatch_pc(body)
         if method != "GET":
             return HTTPStatus.METHOD_NOT_ALLOWED, {"error": "method_not_allowed"}
         if route == "/":
@@ -115,6 +152,16 @@ class GatewayApp:
             return HTTPStatus.OK, self.health(live_only=True)
         if route == "/api/v1/tools":
             return HTTPStatus.OK, self.tool_catalog()
+        if route == "/api/v1/codex/health":
+            check = self.codex.health()
+            status = HTTPStatus.OK if check.ready else HTTPStatus.SERVICE_UNAVAILABLE
+            return status, check.to_dict()
+        if route == "/api/v1/codex/runs":
+            return HTTPStatus.OK, {"runs": self.codex.list_runs()}
+        if route == "/api/v1/pc/health":
+            check = self.pc.health()
+            status = HTTPStatus.OK if check.ready else HTTPStatus.SERVICE_UNAVAILABLE
+            return status, check.to_dict()
         if route == "/api/v1/runs":
             return HTTPStatus.OK, {"runs": self.workflows.list_runs()}
         return HTTPStatus.NOT_FOUND, {"error": "not_found", "path": route}
@@ -139,6 +186,84 @@ class GatewayApp:
         response = self.hermes.chat(request)
         status = HTTPStatus.OK if response.success else HTTPStatus.SERVICE_UNAVAILABLE
         return status, response.to_dict()
+
+    def _dispatch_codex(
+        self,
+        body: bytes | Mapping[str, object] | None,
+    ) -> tuple[int, dict[str, Any]]:
+        try:
+            task, approval_granted = coding_task_from_payload(self._decode_body(body))
+        except (UnicodeDecodeError, json.JSONDecodeError, CodingTaskValidationError) as exc:
+            return HTTPStatus.BAD_REQUEST, {
+                "success": False,
+                "error": "invalid_request",
+                "details": str(exc),
+            }
+        response = self.codex.delegate(task, approval_granted=approval_granted)
+        if response.success:
+            status = HTTPStatus.OK
+        elif response.error == "approval_required":
+            status = HTTPStatus.CONFLICT
+        elif response.error == "codex_unavailable":
+            status = HTTPStatus.SERVICE_UNAVAILABLE
+        else:
+            status = HTTPStatus.UNPROCESSABLE_ENTITY
+        return status, response.to_dict()
+
+    def _dispatch_pc(
+        self,
+        body: bytes | Mapping[str, object] | None,
+    ) -> tuple[int, dict[str, Any]]:
+        try:
+            payload = self._decode_body(body)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            return HTTPStatus.BAD_REQUEST, {
+                "success": False,
+                "error": "invalid_request",
+                "details": str(exc),
+            }
+        if not isinstance(payload, Mapping):
+            return HTTPStatus.BAD_REQUEST, {
+                "success": False,
+                "error": "invalid_request",
+                "details": "request body must be a JSON object",
+            }
+        action = payload.get("action")
+        target = payload.get("target")
+        parameters = payload.get("parameters", {})
+        if not isinstance(action, str) or not action.strip():
+            return HTTPStatus.BAD_REQUEST, {
+                "success": False,
+                "error": "invalid_request",
+                "details": "action must be a non-empty string",
+            }
+        if target is not None and not isinstance(target, str):
+            return HTTPStatus.BAD_REQUEST, {
+                "success": False,
+                "error": "invalid_request",
+                "details": "target must be a string when provided",
+            }
+        if not isinstance(parameters, Mapping):
+            return HTTPStatus.BAD_REQUEST, {
+                "success": False,
+                "error": "invalid_request",
+                "details": "parameters must be a JSON object",
+            }
+        result = self.pc.invoke(action.strip(), target=target, parameters=parameters)
+        status = (
+            HTTPStatus.OK
+            if result.success
+            else HTTPStatus.CONFLICT
+            if result.error == "approval_required"
+            else HTTPStatus.UNPROCESSABLE_ENTITY
+        )
+        return status, result.to_dict()
+
+    @staticmethod
+    def _decode_body(body: bytes | Mapping[str, object] | None) -> object:
+        if isinstance(body, (bytes, bytearray)):
+            return json.loads(body.decode("utf-8"))
+        return body
 
 
 class GatewayRequestHandler(BaseHTTPRequestHandler):
