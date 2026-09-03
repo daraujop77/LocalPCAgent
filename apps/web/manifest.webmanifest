@@ -1,11 +1,11 @@
 {
-  "name": "Personal AI Platform",
-  "short_name": "Personal AI",
+  "name": "JARVIS",
+  "short_name": "JARVIS",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#0b1020",
   "theme_color": "#111827",
-  "description": "Local-first chat and operations console for the Personal AI Platform",
+  "description": "Local-first chat and operations console for JARVIS",
   "icons": [
     { "src": "icon.svg", "sizes": "192x192", "type": "image/svg+xml", "purpose": "any maskable" }
   ]

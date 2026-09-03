@@ -1,1 +1,0 @@
-"""Windows PC integration boundary."""

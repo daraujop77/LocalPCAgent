@@ -4,43 +4,125 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#111827" />
-    <meta name="description" content="Personal AI Platform local operations console" />
+    <meta name="description" content="JARVIS local operations console" />
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="stylesheet" href="styles.css" />
-    <title>Personal AI Platform</title>
+    <title>JARVIS</title>
   </head>
-  <body>
+  <body data-theme="jarvis">
     <div class="app-shell">
       <header class="topbar">
-        <div>
-          <p class="eyebrow">LOCAL-FIRST CONTROL PLANE</p>
-          <h1>Personal AI</h1>
+        <div class="brand-lockup">
+          <span class="brand-mark" aria-hidden="true"><span></span></span>
+          <div>
+            <p class="eyebrow">LOCAL-FIRST CONTROL PLANE</p>
+            <h1>JARVIS</h1>
+            <p class="brand-subtitle">HERMES / LOCAL QWEN OPERATIONS</p>
+          </div>
         </div>
-        <span id="health-badge" class="badge badge-muted">Checking</span>
+        <div class="topbar-controls">
+          <span id="health-badge" class="badge badge-muted">Checking</span>
+        </div>
       </header>
 
-      <main>
-        <section id="view-chat" class="view" aria-labelledby="chat-title">
-          <div class="section-heading">
+      <div class="jarvis-dashboard">
+        <aside class="jarvis-rail" aria-label="Workspace shortcuts">
+          <div class="rail-brand" aria-hidden="true"><span class="rail-orb"></span></div>
+          <p class="rail-label">Sections</p>
+          <button class="rail-item active" type="button" data-view="chat"><span class="rail-icon">◉</span><span>Chat</span></button>
+          <button class="rail-item" type="button" data-view="runs"><span class="rail-icon">⌁</span><span>Runs</span></button>
+          <button class="rail-item" type="button" data-view="schedules"><span class="rail-icon">◌</span><span>Schedules</span></button>
+          <button class="rail-item" type="button" data-view="agents"><span class="rail-icon">✦</span><span>Agents</span></button>
+          <button class="rail-item" type="button" data-view="approvals"><span class="rail-icon">◇</span><span>Approvals</span></button>
+          <button class="rail-item" type="button" data-view="artifacts"><span class="rail-icon">▧</span><span>Artifacts</span></button>
+          <button class="rail-item" type="button" data-view="system"><span class="rail-icon">◎</span><span>Monitor</span></button>
+          <div class="rail-footer"><span class="rail-footer-dot"></span><span>LOCAL</span></div>
+        </aside>
+
+        <main class="workspace-main">
+        <section id="view-chat" class="view jarvis-chat-view" aria-labelledby="chat-title">
+          <div class="section-heading jarvis-section-heading">
             <div>
               <p class="eyebrow">HERMES + LOCAL QWEN</p>
               <h2 id="chat-title">Chat</h2>
+              <p class="section-subtitle">Conversational control surface</p>
             </div>
-            <button id="refresh-chat-health" class="button button-ghost" type="button">Refresh</button>
+            <div class="jarvis-heading-status">
+              <span class="status-chip"><span class="status-dot"></span>CORE ONLINE</span>
+              <span class="status-chip status-chip-muted">LOCAL MODEL</span>
+              <button id="refresh-chat-health" class="button button-ghost" type="button">Refresh</button>
+            </div>
           </div>
+
+          <div class="jarvis-hero-panel">
+            <div class="hero-panel-topline">
+              <span class="eyebrow">ASSISTANT CORE</span>
+              <span class="hero-readout">SIGNAL <strong id="core-signal">STABLE</strong></span>
+            </div>
+            <div id="jarvis-core-stage" class="jarvis-core-stage" data-state="ready" aria-label="Live Blender Living Core assistant model presentation">
+              <span class="core-spacefield" aria-hidden="true"></span>
+              <span class="core-aura" aria-hidden="true"></span>
+              <span class="core-orbit core-orbit-wide" aria-hidden="true"><span class="core-orbit-particle"></span></span>
+              <span class="core-orbit core-orbit-mid" aria-hidden="true"><span class="core-orbit-particle"></span></span>
+              <span class="core-orbit core-orbit-tight" aria-hidden="true"><span class="core-orbit-particle"></span></span>
+              <span class="core-ring core-ring-outer" aria-hidden="true"></span>
+              <span class="core-ring core-ring-middle" aria-hidden="true"></span>
+              <span class="core-static-suppression" aria-hidden="true"></span>
+              <canvas class="core-motion-layer" aria-hidden="true"></canvas>
+              <span class="core-scanline" aria-hidden="true"></span>
+              <div class="core-model">
+                <img class="living-core-image" src="assets/living-core-model-test.png" alt="Blender Living Core assistant model test render" />
+              </div>
+            </div>
+            <div class="core-caption"><strong id="core-caption-state">Standing by.</strong><span id="core-caption-hint">Ask Hermes something to begin.</span></div>
+          </div>
+
           <div id="chat-log" class="chat-log" aria-live="polite">
-            <div class="empty-state">Ask Hermes something to begin.</div>
+            <div class="empty-state">
+              <span class="empty-orb" aria-hidden="true"></span>
+              <span>Awaiting your first instruction.</span>
+            </div>
           </div>
           <form id="chat-form" class="composer">
             <label class="sr-only" for="chat-message">Message</label>
             <textarea id="chat-message" rows="3" placeholder="Ask a question or describe a task..."></textarea>
+            <div class="context-meter" aria-label="Context usage">
+              <div id="context-donut" class="context-donut" role="img" aria-label="No context usage yet">
+                <span id="context-percent">0%</span>
+              </div>
+              <div class="context-meter-copy">
+                <span class="context-meter-title">CONTEXT USED</span>
+                <span id="context-usage-label">No usage yet</span>
+                <span id="context-usage-detail" class="context-meter-detail">Qwen context window · 64K profile</span>
+              </div>
+            </div>
             <div class="composer-row">
-              <select id="chat-task-type" aria-label="Task type">
-                <option value="general">General</option>
-                <option value="coding">Coding</option>
-                <option value="blender">Blender</option>
-                <option value="sc2">SC2</option>
-              </select>
+              <label class="chat-mode-control" for="chat-mode">
+                <span>Mode</span>
+                <select id="chat-mode" aria-label="Chat mode">
+                  <option value="regular">Regular</option>
+                  <option value="deep">Deep · high reasoning</option>
+                  <option value="fast">Fast</option>
+                </select>
+              </label>
+              <label class="chat-mode-control" for="reasoning-effort">
+                <span>Reasoning</span>
+                <select id="reasoning-effort" aria-label="Reasoning effort">
+                  <option value="auto">Automatic</option>
+                  <option value="none">Off</option>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </label>
+              <label class="chat-mode-control" for="response-profile">
+                <span>Style</span>
+                <select id="response-profile" aria-label="Response style">
+                  <option value="natural">Natural · GPT-like</option>
+                  <option value="technical">Technical</option>
+                </select>
+              </label>
+              <span id="hermes-routing-note" class="composer-note">Hermes decides the specialist</span>
               <button class="button button-primary" type="submit">Send</button>
             </div>
           </form>
@@ -52,6 +134,51 @@
             <button class="button button-ghost" type="button" data-refresh="runs">Refresh</button>
           </div>
           <div id="runs-list" class="card-list"><div class="empty-state">No runs loaded.</div></div>
+        </section>
+
+        <section id="view-schedules" class="view hidden" aria-labelledby="schedules-title">
+          <div class="section-heading">
+            <div><p class="eyebrow">BOUNDED AUTOMATION</p><h2 id="schedules-title">Schedules</h2></div>
+            <button class="button button-ghost" type="button" data-refresh="schedules">Refresh</button>
+          </div>
+          <div id="schedules-list" class="card-list"><div class="empty-state">No schedules loaded.</div></div>
+        </section>
+
+        <section id="view-agents" class="view hidden" aria-labelledby="agents-title">
+          <div class="section-heading">
+            <div><p class="eyebrow">COORDINATION BOUNDARY</p><h2 id="agents-title">Agent Plans</h2><p class="section-subtitle">Inspection only · no agent execution</p></div>
+            <div class="section-heading-actions"><span id="agent-plan-mode" class="badge badge-muted">PLAN ONLY · NO EXECUTION</span><button class="button button-ghost" type="button" data-refresh="agents">Refresh</button></div>
+          </div>
+          <div class="agent-safety-note">Hermes can describe a bounded sequential handoff, but this view never starts an agent, calls a remote specialist, or exposes execution controls.</div>
+          <div class="agent-grid">
+            <article class="status-card">
+              <p class="eyebrow">AGENT CATALOG</p>
+              <div id="agent-catalog" class="agent-catalog"><div class="empty-state">No agent catalog loaded.</div></div>
+            </article>
+            <article class="status-card">
+              <p class="eyebrow">PREVIEW A PLAN</p>
+              <form id="agent-plan-form" class="agent-plan-form">
+                <label for="agent-plan-task">Task description</label>
+                <textarea id="agent-plan-task" rows="4" maxlength="8000" placeholder="Describe a task to route for inspection..."></textarea>
+                <div class="composer-row">
+                  <label class="sr-only" for="agent-plan-type">Task type</label>
+                  <select id="agent-plan-type" aria-label="Agent plan task type">
+                    <option value="general">General</option>
+                    <option value="coding">Coding</option>
+                    <option value="blender">Blender</option>
+                    <option value="sc2">SC2</option>
+                    <option value="brainstorming">Brainstorming</option>
+                    <option value="adversarial_review">Adversarial review</option>
+                  </select>
+                  <button class="button button-primary" type="submit">Preview only</button>
+                </div>
+              </form>
+            </article>
+          </div>
+          <article class="status-card agent-plan-result">
+            <p class="eyebrow">LATEST PLAN PREVIEW</p>
+            <pre id="agent-plan-output">No plan preview requested.</pre>
+          </article>
         </section>
 
         <section id="view-approvals" class="view hidden" aria-labelledby="approvals-title">
@@ -81,6 +208,7 @@
             <article class="status-card"><p class="eyebrow">WORKFLOWS</p><pre id="workflows-status">Loading...</pre></article>
             <article class="status-card"><p class="eyebrow">MODELS</p><pre id="models-status">Loading...</pre></article>
             <article class="status-card"><p class="eyebrow">USAGE</p><pre id="usage-status">Available usage metrics depend on the configured gateway.</pre></article>
+            <article class="status-card"><p class="eyebrow">AGENT EVIDENCE</p><pre id="agents-status">Loading...</pre></article>
           </div>
           <details class="settings-card">
             <summary>Connection settings</summary>
@@ -91,11 +219,40 @@
             <button id="save-settings" class="button button-primary" type="button">Save settings</button>
           </details>
         </section>
-      </main>
+        </main>
+
+        <aside class="jarvis-telemetry" aria-label="Jarvis telemetry">
+          <article class="telemetry-card telemetry-summary">
+            <div class="telemetry-card-heading"><span class="eyebrow">CORE STATUS</span><span class="telemetry-menu">☷</span></div>
+            <div class="telemetry-summary-body"><span class="telemetry-hex">⬡</span><div><strong>READY</strong><span>Hermes gateway</span></div><span class="telemetry-ring telemetry-ring-small"></span></div>
+            <div class="telemetry-bar"><span></span></div>
+          </article>
+          <article class="telemetry-card telemetry-chart">
+            <div class="telemetry-card-heading"><span class="eyebrow">SIGNAL FLOW</span><span class="telemetry-live">LIVE</span></div>
+            <svg class="telemetry-wave" viewBox="0 0 260 82" role="img" aria-label="Live signal flow visualization">
+              <path d="M4 56 C18 42, 24 69, 39 53 S61 30, 76 49 S95 67, 112 46 S133 17, 148 42 S171 64, 187 49 S206 30, 220 46 S242 33, 256 24" />
+            </svg>
+            <div class="telemetry-knobs"><span></span><span></span><span></span></div>
+          </article>
+          <article class="telemetry-card telemetry-radar">
+            <div class="telemetry-card-heading"><span class="eyebrow">WORKSPACE MAP</span><span class="telemetry-menu">⊙</span></div>
+            <div class="radar-art"><span class="radar-dot radar-dot-one"></span><span class="radar-dot radar-dot-two"></span><span class="radar-dot radar-dot-three"></span><span class="radar-core"></span></div>
+          </article>
+          <article class="telemetry-card telemetry-services">
+            <div class="telemetry-card-heading"><span class="eyebrow">SERVICES</span><span class="telemetry-menu">⌘</span></div>
+            <div class="service-row"><span class="service-icon">⌁</span><span class="service-name">Gateway</span><span class="service-state"></span></div>
+            <div class="service-row"><span class="service-icon">◉</span><span class="service-name">Workflows</span><span class="service-state"></span></div>
+            <div class="service-row"><span class="service-icon">◇</span><span class="service-name">Approvals</span><span class="service-state"></span></div>
+            <div class="service-row"><span class="service-icon">▧</span><span class="service-name">Artifacts</span><span class="service-state"></span></div>
+          </article>
+        </aside>
+      </div>
 
       <nav class="bottom-nav" aria-label="Primary navigation">
         <button class="nav-item active" type="button" data-view="chat">Chat</button>
         <button class="nav-item" type="button" data-view="runs">Runs</button>
+        <button class="nav-item" type="button" data-view="schedules">Schedules</button>
+        <button class="nav-item" type="button" data-view="agents">Agents</button>
         <button class="nav-item" type="button" data-view="approvals">Approvals</button>
         <button class="nav-item" type="button" data-view="artifacts">Artifacts</button>
         <button class="nav-item" type="button" data-view="system">Monitor</button>
